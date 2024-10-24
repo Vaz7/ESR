@@ -1,45 +1,81 @@
 import cv2
 import socket
 import threading
-import os
 import time
+import queue
 
 # Specify the fixed video file path here
-VIDEO_PATH = "videoA.mp4"
+VIDEO_PATH = "videoB.mp4"
 
-def handle_client(client_socket, addr):
+# Shared queue to store the encoded frames
+frame_queue = queue.Queue(maxsize=10)
+
+def get_video_fps():
+    cap = cv2.VideoCapture(VIDEO_PATH)
+    if not cap.isOpened():
+        print(f"Error: Unable to open video file {VIDEO_PATH}")
+        return None
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    cap.release()
+    return fps
+
+def play_video_continuously():
+
     cap = cv2.VideoCapture(VIDEO_PATH)
 
     if not cap.isOpened():
         print(f"Error opening video file {VIDEO_PATH}")
-        client_socket.sendall(b"ERROR: Unable to open video")
-        client_socket.close()
         return
+    fps = get_video_fps()
 
-    # Send the frame rate of the video
-    fps = cap.get(cv2.CAP_PROP_FPS)
+    frame_delay = 1.0 / fps
+
+    print(f"Playing video at {fps} FPS with frame delay {frame_delay} seconds")
+
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            # Restart the video loop
+            cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+            continue
+
+        _, img_encoded = cv2.imencode('.jpg', frame)
+        img_bytes = img_encoded.tobytes()
+
+        # Put the encoded frame in the queue (blocking until there is space)
+        try:
+            frame_queue.put(img_bytes, timeout=1)
+        except queue.Full:
+            continue
+
+        time.sleep(frame_delay)
+
+    cap.release()
+
+def handle_client(client_socket, addr):
+
+    fps = get_video_fps()
+    # Send the FPS to the client
     client_socket.sendall(int(fps).to_bytes(4, byteorder='big'))
 
     while True:
-        while cap.isOpened():
-            ret, frame = cap.read()
-            if not ret:
-                # Restart the video loop
-                cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
-                continue
+        try:
+            # Get the current frame from the queue (blocking)
+            frame_data = frame_queue.get(timeout=1)
+            frame_size = len(frame_data)
 
-            _, img_encoded = cv2.imencode('.jpg', frame)
-            img_bytes = img_encoded.tobytes()
+            # Send the current frame size and frame data to the client
+            client_socket.sendall(frame_size.to_bytes(4, byteorder='big'))
+            client_socket.sendall(frame_data)
 
-            # Send the frame size and the frame data
-            client_socket.sendall(len(img_bytes).to_bytes(4, byteorder='big'))
-            client_socket.sendall(img_bytes)
+        except queue.Empty:
+            print(f"No frames to send to {addr}.")
+            break
+        except (ConnectionResetError, BrokenPipeError):
+            print(f"Connection lost to {addr}.")
+            break
 
-    cap.release()
-    print(f"Video '{VIDEO_PATH}' has been streamed to {addr}")
-    client_socket.sendall(b"END_STREAM")
     client_socket.close()
-
 
 def serve_video_stream():
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -56,7 +92,6 @@ def serve_video_stream():
 
     server_socket.close()
 
-
 def handle_bandwidth_test(client_socket, addr):
     try:
         while True:
@@ -72,7 +107,6 @@ def handle_bandwidth_test(client_socket, addr):
                 print("Incomplete data received.")
                 break
 
-
             # Send the same amount of data back to the client
             client_socket.sendall(len(data).to_bytes(4, byteorder='big'))
             client_socket.sendall(data)
@@ -82,10 +116,9 @@ def handle_bandwidth_test(client_socket, addr):
     finally:
         client_socket.close()
 
-
 def serve_bandwidth_test():
     bw_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    bw_socket.bind(('0.0.0.0', 12346))  # Use a different port for bandwidth test
+    bw_socket.bind(('0.0.0.0', 12346))
     bw_socket.listen(5)
 
     print("Bandwidth test server is listening on port 12346...")
@@ -98,19 +131,22 @@ def serve_bandwidth_test():
 
     bw_socket.close()
 
-
 def main():
-    # Start the video streaming server in a separate thread
-    video_thread = threading.Thread(target=serve_video_stream)
+    # Start the video playback thread
+    video_thread = threading.Thread(target=play_video_continuously)
     video_thread.start()
+
+    # Start the video streaming server in a separate thread
+    stream_thread = threading.Thread(target=serve_video_stream)
+    stream_thread.start()
 
     # Start the bandwidth testing server in another thread
     bandwidth_thread = threading.Thread(target=serve_bandwidth_test)
     bandwidth_thread.start()
 
     video_thread.join()
+    stream_thread.join()
     bandwidth_thread.join()
-
 
 if __name__ == "__main__":
     main()

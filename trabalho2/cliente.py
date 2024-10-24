@@ -162,7 +162,7 @@ def monitor_bandwidth(ip_list, current_ip, stop_event):
         else:
             print("Could not retrieve bandwidth info.")
 
-        time.sleep(10)
+        time.sleep(60)
 
 
 def main():
