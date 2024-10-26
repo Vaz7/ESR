@@ -4,6 +4,9 @@ import time
 import threading
 import cv2
 import numpy as np
+import struct
+
+MAX_UDP_PACKET_SIZE = 65507  # Maximum safe UDP packet size
 
 def validateIpAddress(ipAddr):
     parts = ipAddr.split(".")
@@ -59,54 +62,82 @@ def medeLarguraBanda(ip_list):
 
 def receive_video_stream(client_socket, stop_event):
     try:
-        fps_data = client_socket.recv(4)
-        if len(fps_data) < 4:
-            print("Failed to receive frame rate.")
-            return
+        # Receive FPS from server and calculate frame delay
+        fps_data, _ = client_socket.recvfrom(4)
         fps = int.from_bytes(fps_data, byteorder='big')
-        frame_delay = 1.0 / fps  # Delay to match FPS
+        frame_delay = 1.0 / fps
 
         print(f"Video frame rate: {fps} FPS")
 
+        buffer = {}
+        frame_size = None
+        last_display_time = time.time()
+
+        # Circular frame buffer to store up to 50 frames
+        frame_buffer = []
+        max_buffer_size = 100
+
         while not stop_event.is_set():
-            frame_size_data = client_socket.recv(4)
-            if len(frame_size_data) < 4:
-                print("Connection closed or incomplete data received.")
-                break
-
-            frame_size = int.from_bytes(frame_size_data, byteorder='big')
-            if frame_size == 0:
-                print("End of video stream.")
-                break
-
-            img_bytes = b''
-            while len(img_bytes) < frame_size:
-                packet = client_socket.recv(frame_size - len(img_bytes))
-                if not packet:
-                    print("Failed to receive packet.")
-                    break
-                img_bytes += packet
-
-            if len(img_bytes) != frame_size:
-                print("Incomplete frame received, skipping.")
+            packet, _ = client_socket.recvfrom(MAX_UDP_PACKET_SIZE)
+            if len(packet) < 6:  # Expecting a 6-byte header
+                print("Received an invalid packet.")
                 continue
 
-            nparr = np.frombuffer(img_bytes, np.uint8)
-            frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+            # Unpack packet ID and frame size
+            packet_id, total_size = struct.unpack('>HI', packet[:6])
+            data = packet[6:]
 
-            if frame is None:
-                print("Error: Failed to decode the frame.")
-                continue
+            # Initialize frame size for new frame
+            if frame_size is None:
+                frame_size = total_size
 
-            cv2.imshow('Client Video Stream', frame)
-            if cv2.waitKey(1) & 0xFF == ord('q'):
-                break
+            # Store packet data in buffer
+            buffer[packet_id] = data
 
-            time.sleep(frame_delay)
+            # Check if the entire frame has been received
+            received_size = sum(len(buffer[pid]) for pid in buffer)
+            if received_size >= frame_size:
+                # Assemble the complete frame from buffer
+                frame_data = b''.join(buffer[pid] for pid in sorted(buffer))
+                if len(frame_data) != frame_size:
+                    buffer.clear()
+                    frame_size = None
+                    continue
+
+                # Decode the frame data
+                nparr = np.frombuffer(frame_data, np.uint8)
+                frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+                if frame is None:
+                    print("Failed to decode frame.")
+                    buffer.clear()
+                    frame_size = None
+                    continue
+
+                # Add frame to the circular buffer
+                frame_buffer.append(frame)
+                if len(frame_buffer) > max_buffer_size:
+                    frame_buffer.pop(0)  # Remove the oldest frame
+
+                # Display the latest frame in the buffer
+                if frame_buffer:
+                    current_frame = frame_buffer.pop(0)
+                    cv2.imshow('Client Video Stream', current_frame)
+                    if cv2.waitKey(1) & 0xFF == ord('q'):
+                        break
+
+                # Track the timing for smoother playback
+                current_time = time.time()
+                time_elapsed = current_time - last_display_time
+                if time_elapsed < frame_delay:
+                    time.sleep(frame_delay - time_elapsed)
+                last_display_time = time.time()
+
+                # Reset for the next frame
+                buffer.clear()
+                frame_size = None
 
     except Exception as e:
         print(f"Error receiving video stream: {e}")
-
     finally:
         cv2.destroyAllWindows()
         client_socket.close()
@@ -117,31 +148,28 @@ def manage_video_stream(current_ip, stop_event):
 
     while not stop_event.is_set():
         try:
-            # Criar um socker para a conexao com o ip atual para receber a stream
-            client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            client_socket.connect((current_ip[0], 12345))  # Use port 12345 for video stream
+            # Create UDP socket to connect to the current IP for the stream
+            client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            client_socket.sendto(b'Start', (current_ip[0], 12345))  # Initial message to start the stream
 
-            # Arrancar a thread para receber a stream
-            stop_video_event = threading.Event()  # Este event vai ser usado para matar a thread quando o ip mudar
+            # Start thread to receive the video stream
+            stop_video_event = threading.Event()
             video_thread = threading.Thread(target=receive_video_stream, args=(client_socket, stop_video_event))
             video_thread.start()
 
-            # testar para ver se o ip mudou
+            # Monitor for IP changes
             previous_ip = current_ip[0]
             while not stop_event.is_set() and current_ip[0] == previous_ip:
                 time.sleep(1)
 
-            # Se o ip mudou mata se a thread e começa-se o processo novamente
+            # Stop video thread if IP has changed
             if current_ip[0] != previous_ip:
                 print(f"IP changed to {current_ip[0]}, stopping current video thread.")
                 stop_video_event.set()
                 video_thread.join()
-
         except Exception as e:
             print(f"Error connecting to {current_ip[0]} for video stream: {e}")
-            time.sleep(5) 
-
-    # Ensure that the current video stream is stopped when the stop event is set
+            time.sleep(5)
     if video_thread:
         stop_video_event.set()
         video_thread.join()
