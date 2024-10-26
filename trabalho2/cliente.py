@@ -6,8 +6,7 @@ import cv2
 import numpy as np
 import struct
 
-MAX_UDP_PACKET_SIZE = 65507  # Maximum safe UDP packet size
-
+MAX_UDP_PACKET_SIZE = 65507 
 def validateIpAddress(ipAddr):
     parts = ipAddr.split(".")
     if len(parts) != 4:

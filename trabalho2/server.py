@@ -2,15 +2,12 @@ import cv2
 import socket
 import threading
 import time
-import queue
 import struct
 
-# Specify the fixed video file path here
-VIDEO_PATH = "movie.Mjpeg"
-MAX_UDP_PACKET_SIZE = 65507  # Maximum safe UDP packet size
 
-# Shared queue to store the encoded frames
-frame_queue = queue.Queue(maxsize=10)
+VIDEO_PATH = "videoB.mp4"
+MAX_UDP_PACKET_SIZE = 65507
+
 
 def get_video_fps():
     cap = cv2.VideoCapture(VIDEO_PATH)
@@ -20,77 +17,83 @@ def get_video_fps():
     fps = cap.get(cv2.CAP_PROP_FPS)
     cap.release()
     return fps
+    
 
-def play_video_continuously():
+def play_video_continuously(client_addrs, lock):
+    fps = get_video_fps()
+    frame_delay = 1.0 / fps
+
+    # Persistent UDP socket for all clients
+    server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+
     while True:
-        cap = cv2.VideoCapture(VIDEO_PATH)  # Reinitialize at the start of each loop
+        cap = cv2.VideoCapture(VIDEO_PATH)
         if not cap.isOpened():
             print(f"Error opening video file {VIDEO_PATH}")
             return
 
-        fps = get_video_fps()
-        frame_delay = 1.0 / fps
         while True:
             ret, frame = cap.read()
             if not ret:
-                break  
+                break  # Exit inner loop to reopen video file for continuous playback
 
             _, img_encoded = cv2.imencode('.jpg', frame)
             img_bytes = img_encoded.tobytes()
+            frame_size = len(img_bytes)
 
-            # Put the encoded frame in the queue, blocking until there's space
-            while True:
-                try:
-                    frame_queue.put(img_bytes, timeout=1)
-                    break
-                except queue.Full:
-                    time.sleep(0.01)  # Queue is full, wait briefly
+            # Send frame to all connected clients
+            with lock:
+                for client_addr in list(client_addrs):
+                    try:
+                        send_frame_to_client(server_socket, img_bytes, frame_size, client_addr)
+                    except Exception as e:
+                        print(f"Error sending frame to {client_addr}: {e}")
+                        client_addrs.remove(client_addr)
 
             time.sleep(frame_delay)
 
-        cap.release()
+        cap.release()  # Release the video capture when the video ends
 
 
-def handle_client_udp(server_socket, client_addr):
+
+def send_frame_to_client(server_socket, frame_data, frame_size, client_addr):
+    packet_id = 0
+    offset = 0
+    while offset < frame_size:
+        chunk = frame_data[offset:offset + MAX_UDP_PACKET_SIZE - 8]
+        chunk_size = len(chunk)
+        offset += chunk_size
+
+        packet_header = struct.pack('>HI', packet_id, frame_size)
+        server_socket.sendto(packet_header + chunk, client_addr)
+
+        packet_id += 1
+
+
+def handle_client_udp(client_addr, client_addrs, lock):
     fps = get_video_fps()
-    server_socket.sendto(int(fps).to_bytes(4, byteorder='big'), client_addr)
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as server_socket:
+        server_socket.sendto(int(fps).to_bytes(4, byteorder='big'), client_addr)
 
-    while True:
-        try:
-            frame_data = frame_queue.get(timeout=1)
-            frame_size = len(frame_data)
+    # Add the client to the active client list
+    with lock:
+        client_addrs.add(client_addr)
+    print(f"Client {client_addr} added to active connections.")
 
-            # Fragment frame into packets if it exceeds MAX_UDP_PACKET_SIZE
-            packet_id = 0
-            offset = 0
-            while offset < frame_size:
-                chunk = frame_data[offset:offset + MAX_UDP_PACKET_SIZE - 8]
-                chunk_size = len(chunk)
-                offset += chunk_size
 
-                # Packet structure: [Packet ID, Total Packets, Frame Chunk]
-                packet_header = struct.pack('>HI', packet_id, frame_size)
-                server_socket.sendto(packet_header + chunk, client_addr)
-
-                packet_id += 1
-        except queue.Empty:
-            print(f"No frames to send to {client_addr}.")
-            break
-        except (ConnectionResetError, BrokenPipeError, OSError):
-            print(f"Connection lost to {client_addr}.")
-            break
-
-def serve_video_stream_udp():
+def serve_video_stream_udp(client_addrs, lock):
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     server_socket.bind(('0.0.0.0', 12345))
     print("Video streaming server (UDP) is listening on port 12345...")
 
     while True:
-        # Wait for the initial connection message from client
         data, client_addr = server_socket.recvfrom(1024)
         print(f"Connection from {client_addr} has been established for video streaming.")
-        client_handler = threading.Thread(target=handle_client_udp, args=(server_socket, client_addr))
+        
+        # Handle the new client in a separate thread
+        client_handler = threading.Thread(target=handle_client_udp, args=(client_addr, client_addrs, lock))
         client_handler.start()
+
 
 def handle_bandwidth_test(client_socket, addr):
     try:
@@ -116,6 +119,7 @@ def handle_bandwidth_test(client_socket, addr):
     finally:
         client_socket.close()
 
+
 def serve_bandwidth_test():
     bw_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     bw_socket.bind(('0.0.0.0', 12346))
@@ -131,13 +135,17 @@ def serve_bandwidth_test():
 
     bw_socket.close()
 
+
 def main():
+    client_addrs = set()  # A set to track active client addresses
+    lock = threading.Lock()
+
     # Start the video playback thread
-    video_thread = threading.Thread(target=play_video_continuously)
+    video_thread = threading.Thread(target=play_video_continuously, args=(client_addrs, lock))
     video_thread.start()
 
-    # Start the video streaming server in a separate thread
-    stream_thread = threading.Thread(target=serve_video_stream_udp)
+    # Start the video streaming server to listen for new clients
+    stream_thread = threading.Thread(target=serve_video_stream_udp, args=(client_addrs, lock))
     stream_thread.start()
 
     # Start the bandwidth testing server in another thread
