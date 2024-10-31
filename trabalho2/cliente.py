@@ -6,7 +6,8 @@ import cv2
 import numpy as np
 import struct
 
-MAX_UDP_PACKET_SIZE = 65507 
+MAX_UDP_PACKET_SIZE = 65000
+
 def validateIpAddress(ipAddr):
     parts = ipAddr.split(".")
     if len(parts) != 4:
@@ -24,7 +25,7 @@ def validateIpAddress(ipAddr):
 
 def medeLarguraBanda(ip_list):
     port = 12346
-    data_size = 1024
+    data_size = 10000
     ipBW = {}
 
     for ip in ip_list:
@@ -60,6 +61,8 @@ def medeLarguraBanda(ip_list):
 
 
 def receive_video_stream(client_socket, stop_event):
+    client_socket.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 1048576)  # 1MB receive buffer
+
     try:
         # Receive FPS from server and calculate frame delay
         fps_data, _ = client_socket.recvfrom(4)
@@ -120,7 +123,7 @@ def receive_video_stream(client_socket, stop_event):
                 # Display the latest frame in the buffer
                 if frame_buffer:
                     current_frame = frame_buffer.pop(0)
-                    cv2.imshow('Client Video Stream', current_frame)
+                    cv2.imshow('Os Javalis Stream', current_frame)
                     if cv2.waitKey(1) & 0xFF == ord('q'):
                         break
 

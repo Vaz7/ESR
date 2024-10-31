@@ -3,56 +3,68 @@ import socket
 import threading
 import time
 import struct
-
+import subprocess
 
 VIDEO_PATH = "videoB.mp4"
 MAX_UDP_PACKET_SIZE = 65507
 
 
 def get_video_fps():
-    cap = cv2.VideoCapture(VIDEO_PATH)
-    if not cap.isOpened():
-        print(f"Error: Unable to open video file {VIDEO_PATH}")
-        return None
-    fps = cap.get(cv2.CAP_PROP_FPS)
-    cap.release()
-    return fps
+    try:
+        # Use ffprobe to get only the FPS as a single output
+        fps_output = subprocess.check_output(
+            ["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", 
+             "stream=r_frame_rate", "-of", "csv=p=0", VIDEO_PATH],
+            text=True
+        ).strip()
+        
+        # Split if FPS is in fraction format
+        if '/' in fps_output:
+            num, denom = map(int, fps_output.split('/'))
+            return num / denom
+        else:
+            return float(fps_output)
+
+    except Exception as e:
+        print(f"Error retrieving FPS with FFmpeg: {e}")
+        return 30  # Default to 30 FPS if there’s an issue
     
 
 def play_video_continuously(client_addrs, lock):
     fps = get_video_fps()
     frame_delay = 1.0 / fps
 
-    # Persistent UDP socket for all clients
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 1048576)  # 1MB send buffer
+
+    cap = cv2.VideoCapture(VIDEO_PATH)
+    if not cap.isOpened():
+        print(f"Error opening video file {VIDEO_PATH}")
+        return
 
     while True:
-        cap = cv2.VideoCapture(VIDEO_PATH)
-        if not cap.isOpened():
-            print(f"Error opening video file {VIDEO_PATH}")
-            return
+        ret, frame = cap.read()
+        if not ret:
+            cap.set(cv2.CAP_PROP_POS_FRAMES, 0)  # Restart the video if it ends
+            continue
 
-        while True:
-            ret, frame = cap.read()
-            if not ret:
-                break  # Exit inner loop to reopen video file for continuous playback
+        # Resize and compress frame
+        frame = cv2.resize(frame, (640, 480))
+        _, img_encoded = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 90])
+        img_bytes = img_encoded.tobytes()
+        frame_size = len(img_bytes)
 
-            _, img_encoded = cv2.imencode('.jpg', frame)
-            img_bytes = img_encoded.tobytes()
-            frame_size = len(img_bytes)
+        # Send frame to all clients
+        with lock:
+            for client_addr in list(client_addrs):
+                try:
+                    send_frame_to_client(server_socket, img_bytes, frame_size, client_addr)
+                except Exception as e:
+                    print(f"Error sending frame to {client_addr}: {e}")
+                    client_addrs.remove(client_addr)
 
-            # Send frame to all connected clients
-            with lock:
-                for client_addr in list(client_addrs):
-                    try:
-                        send_frame_to_client(server_socket, img_bytes, frame_size, client_addr)
-                    except Exception as e:
-                        print(f"Error sending frame to {client_addr}: {e}")
-                        client_addrs.remove(client_addr)
+        time.sleep(frame_delay)
 
-            time.sleep(frame_delay)
-
-        cap.release()  # Release the video capture when the video ends
 
 
 
