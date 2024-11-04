@@ -30,7 +30,7 @@ def get_video_fps():
         return 30  # Default to 30 FPS if there’s an issue
     
 
-def play_video_continuously(client_addrs, lock):
+def play_video_continuously(client_addrs, client_lock):
     fps = get_video_fps()
     frame_delay = 1.0 / fps
 
@@ -54,18 +54,22 @@ def play_video_continuously(client_addrs, lock):
         img_bytes = img_encoded.tobytes()
         frame_size = len(img_bytes)
 
+        # Copy current clients to avoid holding lock
+        with client_lock:
+            current_clients = list(client_addrs)
+
         # Send frame to all clients
-        with lock:
-            for client_addr in list(client_addrs):
-                try:
-                    send_frame_to_client(server_socket, img_bytes, frame_size, client_addr)
-                except Exception as e:
-                    print(f"Error sending frame to {client_addr}: {e}")
-                    client_addrs.remove(client_addr)
+        for client_addr in current_clients:
+            try:
+                send_frame_to_client(server_socket, img_bytes, frame_size, client_addr)
+            except Exception as e:
+                print(f"Error sending frame to {client_addr}: {e}")
+                # Remove clients that failed to receive frames
+                with client_lock:
+                    if client_addr in client_addrs:
+                        client_addrs.remove(client_addr)
 
         time.sleep(frame_delay)
-
-
 
 
 def send_frame_to_client(server_socket, frame_data, frame_size, client_addr):
@@ -82,18 +86,18 @@ def send_frame_to_client(server_socket, frame_data, frame_size, client_addr):
         packet_id += 1
 
 
-def handle_client_udp(client_addr, client_addrs, lock):
+def handle_client_udp(client_addr, client_addrs, client_lock):
     fps = get_video_fps()
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as server_socket:
         server_socket.sendto(int(fps).to_bytes(4, byteorder='big'), client_addr)
 
     # Add the client to the active client list
-    with lock:
+    with client_lock:
         client_addrs.add(client_addr)
     print(f"Client {client_addr} added to active connections.")
 
 
-def serve_video_stream_udp(client_addrs, lock):
+def serve_video_stream_udp(client_addrs, client_lock):
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     server_socket.bind(('0.0.0.0', 12345))
     print("Video streaming server (UDP) is listening on port 12345...")
@@ -103,61 +107,52 @@ def serve_video_stream_udp(client_addrs, lock):
         print(f"Connection from {client_addr} has been established for video streaming.")
         
         # Handle the new client in a separate thread
-        client_handler = threading.Thread(target=handle_client_udp, args=(client_addr, client_addrs, lock))
+        client_handler = threading.Thread(target=handle_client_udp, args=(client_addr, client_addrs, client_lock))
         client_handler.start()
 
 
-def handle_bandwidth_test(client_socket, addr):
+def handle_bandwidth_test(bw_socket, data, client_addr):
     try:
-        while True:
-            data_size = client_socket.recv(4)
-            if len(data_size) < 4:
-                break
+        # The first 4 bytes represent the data size
+        data_size = int.from_bytes(data[:4], byteorder='big')
+        received_data = data[4:]
+        
+        while len(received_data) < data_size:
+            
+            packet, _ = bw_socket.recvfrom(4096)
+            received_data += packet
 
-            data_size = int.from_bytes(data_size, byteorder='big')
-
-            # Receive the actual data sent by the client
-            data = client_socket.recv(data_size)
-            if len(data) < data_size:
-                print("Incomplete data received.")
-                break
-
-            # Send the same amount of data back to the client
-            client_socket.sendall(len(data).to_bytes(4, byteorder='big'))
-            client_socket.sendall(data)
+        bw_socket.sendto(received_data, client_addr)
 
     except Exception as e:
-        print(f"Error during bandwidth test: {e}")
-    finally:
-        client_socket.close()
-
+        print(f"Error during bandwidth test with {client_addr}: {e}")
 
 def serve_bandwidth_test():
-    bw_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    bw_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     bw_socket.bind(('0.0.0.0', 12346))
-    bw_socket.listen(5)
-
-    print("Bandwidth test server is listening on port 12346...")
+    print("Bandwidth test server is listening on port 12346")
 
     while True:
-        client_socket, addr = bw_socket.accept()
-        print(f"Connection from {addr} has been established for bandwidth testing.")
-        bw_handler = threading.Thread(target=handle_bandwidth_test, args=(client_socket, addr))
+        #Aqui perguntam-se porque nao podia receber menos no buffer, eu tambem me perguntei isso
+        #Acontece que quando se le 4096 da bosta do socker ele deita o resto dos dados fora e isto rebenta tudo lol
+        data, client_addr = bw_socket.recvfrom(65507)
+        print(f"Received bandwidth test request from {client_addr}")
+
+        bw_handler = threading.Thread(target=handle_bandwidth_test, args=(bw_socket, data, client_addr))
         bw_handler.start()
 
-    bw_socket.close()
 
 
 def main():
     client_addrs = set()  # A set to track active client addresses
-    lock = threading.Lock()
+    client_lock = threading.Lock()
 
     # Start the video playback thread
-    video_thread = threading.Thread(target=play_video_continuously, args=(client_addrs, lock))
+    video_thread = threading.Thread(target=play_video_continuously, args=(client_addrs, client_lock))
     video_thread.start()
 
     # Start the video streaming server to listen for new clients
-    stream_thread = threading.Thread(target=serve_video_stream_udp, args=(client_addrs, lock))
+    stream_thread = threading.Thread(target=serve_video_stream_udp, args=(client_addrs, client_lock))
     stream_thread.start()
 
     # Start the bandwidth testing server in another thread

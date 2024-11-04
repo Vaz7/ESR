@@ -25,32 +25,32 @@ def validateIpAddress(ipAddr):
 
 def medeLarguraBanda(ip_list):
     port = 12346
-    data_size = 10000
+    data_size = 10000  # Ensure this is <= 65507 to fit within a single UDP packet
     ipBW = {}
 
     for ip in ip_list:
         try:
-            client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            client_socket.connect((ip, port))
+            client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
+            # Prepare data to send as a single packet
             dummy_data = b'x' * data_size
             start_time = time.time()
 
-            client_socket.sendall(data_size.to_bytes(4, byteorder='big'))
-            client_socket.sendall(dummy_data)
+            # Send the data size header and data to the server in one packet
+            client_socket.sendto(data_size.to_bytes(4, byteorder='big') + dummy_data, (ip, port))
 
-            received_data = b''
-            while len(received_data) < data_size:
-                packet = client_socket.recv(4096)
-                if not packet:
-                    break
-                received_data += packet
+            # Receive a single response packet
+            received_data, _ = client_socket.recvfrom(65507)
 
-            end_time = time.time()
-            duration = end_time - start_time
-            bandwidth_mbps = (data_size * 8) / (duration * 1_000_000)
-            bandwidth_mbps = round(bandwidth_mbps, 3)
-            ipBW[ip] = bandwidth_mbps
+            # Calculate bandwidth if received data matches the sent size
+            if len(received_data) == data_size:
+                end_time = time.time()
+                duration = end_time - start_time
+                bandwidth_mbps = (data_size * 8) / (duration * 1_000_000)
+                bandwidth_mbps = round(bandwidth_mbps, 3)
+                ipBW[ip] = bandwidth_mbps
+            else:
+                print(f"Incomplete data received from {ip}. Expected {data_size} bytes, got {len(received_data)} bytes.")
 
         except Exception as e:
             print(f"Error during bandwidth calculation for {ip}: {e}")
@@ -58,6 +58,7 @@ def medeLarguraBanda(ip_list):
             client_socket.close()
 
     return ipBW
+
 
 
 def receive_video_stream(client_socket, stop_event):
