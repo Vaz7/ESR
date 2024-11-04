@@ -8,17 +8,16 @@ import subprocess
 VIDEO_PATH = "videoB.mp4"
 MAX_UDP_PACKET_SIZE = 60000
 
-
+#ha umas funcoes do cv2 que fazem isto, mas nao funcionam para todos os formatos
 def get_video_fps():
     try:
-        # Use ffprobe to get only the FPS as a single output
+        
         fps_output = subprocess.check_output(
             ["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", 
              "stream=r_frame_rate", "-of", "csv=p=0", VIDEO_PATH],
             text=True
         ).strip()
         
-        # Split if FPS is in fraction format
         if '/' in fps_output:
             num, denom = map(int, fps_output.split('/'))
             return num / denom

@@ -159,6 +159,7 @@ def manage_video_stream(current_ip, stop_event):
         stop_video_event.set()
         video_thread.join()
 
+
 def monitor_bandwidth(ip_list, current_ip, stop_event):
     while not stop_event.is_set():
         print("Checking bandwidth...")
@@ -173,6 +174,7 @@ def monitor_bandwidth(ip_list, current_ip, stop_event):
         else:
             print("Could not retrieve bandwidth info.")
         time.sleep(BANDWIDTHINTERVAL)
+
 
 def main():
     args = sys.argv[1:]
