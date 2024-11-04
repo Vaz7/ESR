@@ -6,7 +6,7 @@ import struct
 import subprocess
 
 VIDEO_PATH = "videoB.mp4"
-MAX_UDP_PACKET_SIZE = 65507
+MAX_UDP_PACKET_SIZE = 60000
 
 
 def get_video_fps():
