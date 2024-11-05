@@ -1,15 +1,19 @@
 import threading
+import time
 from bandwidth import BandwidthMonitor
-
+from stream_rcv import StreamReceiver
 
 class Client:
-    def __init__(self, ip_list, port=12346):
+    def __init__(self, ip_list, port=12346, stream_port=12345):
         self.port = port
+        self.stream_port = stream_port
         self.bandwidth_dict = {}  # Shared dictionary for all IPs' bandwidth measurements
         self.monitors = []  # List to keep track of monitor threads
         self.ip_list = ip_list
+        self.current_stream_receiver = None
+        self.current_stream_ip = None
+        self.lock = threading.Lock()
 
-    
     def validateIpAddress(self):
         for ip in self.ip_list:
             parts = ip.split(".")
@@ -25,7 +29,7 @@ class Client:
     
     def start_monitoring(self):
         if not self.validateIpAddress():
-            raise ValueError(f"Invalid IP address: {ip}")
+            raise ValueError(f"Invalid IP address in the list")
 
         for ip in self.ip_list:
             monitor = BandwidthMonitor(ip, self.port, self.bandwidth_dict)
@@ -35,3 +39,41 @@ class Client:
         for monitor in self.monitors:
             monitor_thread = threading.Thread(target=monitor.measure_bandwidth)
             monitor_thread.start()
+
+        # Start a thread to monitor and switch streams based on bandwidth
+        stream_manager_thread = threading.Thread(target=self.manage_stream)
+        stream_manager_thread.start()
+
+    def manage_stream(self):
+        """Periodically checks bandwidth and switches to the best available stream."""
+        while True:
+            time.sleep(30)  # Wait 30 seconds to check bandwidth updates
+            
+            with self.lock:
+                # Find the IP with the highest bandwidth
+                best_ip = max(self.bandwidth_dict, key=self.bandwidth_dict.get, default=None)
+                if best_ip is None:
+                    continue
+                
+                best_bandwidth = self.bandwidth_dict[best_ip]
+                print(f"Best available bandwidth: {best_bandwidth} Mbps from {best_ip}")
+
+                # Switch to the new stream if it's better than the current one
+                if self.current_stream_ip != best_ip:
+                    print(f"Switching to the stream from {best_ip}")
+                    self.switch_stream(best_ip)
+
+    def switch_stream(self, new_ip):
+        """Stop the current stream and start a new one from the given IP."""
+        # Stop the current stream receiver if it's running
+        if self.current_stream_receiver is not None:
+            self.current_stream_receiver.stop_stream()
+            self.current_stream_receiver = None
+
+        # Start a new StreamReceiver for the new IP
+        self.current_stream_ip = new_ip
+        self.current_stream_receiver = StreamReceiver(new_ip, self.stream_port)
+
+        # Run the new stream in a separate thread to keep it non-blocking
+        stream_thread = threading.Thread(target=self.current_stream_receiver.start_stream)
+        stream_thread.start()
