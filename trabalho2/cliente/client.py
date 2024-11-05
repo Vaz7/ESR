@@ -1,5 +1,5 @@
 import threading
-from cliente.bandwidth import BandwidthMonitor
+from bandwidth import BandwidthMonitor
 
 
 class Client:
@@ -10,22 +10,22 @@ class Client:
         self.ip_list = ip_list
 
     
-    def validateIpAddress(ipAddr):
-        parts = ipAddr.split(".")
-        if len(parts) != 4:
-            return False
-        for part in parts:
-            if not part.isdigit():
+    def validateIpAddress(self):
+        for ip in self.ip_list:
+            parts = ip.split(".")
+            if len(parts) != 4:
                 return False
-            num = int(part)
-            if num < 0 or num > 255:
-                return False
+            for part in parts:
+                if not part.isdigit():
+                    return False
+                num = int(part)
+                if num < 0 or num > 255:
+                    return False
         return True
     
     def start_monitoring(self):
-        for ip in self.ip_list:
-            if not self.validateIpAddress(ip):
-                raise ValueError(f"Invalid IP address: {ip}")
+        if not self.validateIpAddress():
+            raise ValueError(f"Invalid IP address: {ip}")
 
         for ip in self.ip_list:
             monitor = BandwidthMonitor(ip, self.port, self.bandwidth_dict)
@@ -34,5 +34,4 @@ class Client:
         # Start a thread for each BandwidthMonitor instance
         for monitor in self.monitors:
             monitor_thread = threading.Thread(target=monitor.measure_bandwidth)
-            monitor_thread.daemon = True  # Allows program to exit even if threads are running
             monitor_thread.start()
