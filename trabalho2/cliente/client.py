@@ -5,15 +5,19 @@ from bandwidth import BandwidthMonitor
 from stream_rcv import StreamReceiver
 
 class Client:
-    def __init__(self, ip_list, port=12346, stream_port=12346):
+    def __init__(self, ip_list, port=12346, stream_port=12345):
         self.port = port
         self.stream_port = stream_port
         self.bandwidth_dict = {}  # Shared dictionary for all IPs' bandwidth measurements
         self.monitors = []  # List to keep track of monitor threads
         self.ip_list = ip_list
-        self.current_stream_receiver = None
         self.current_stream_ip = None
         self.lock = threading.Lock()
+
+        # Initialize a single StreamReceiver to receive data on stream_port
+        self.stream_receiver = StreamReceiver(self.stream_port)
+        self.stream_thread = threading.Thread(target=self.stream_receiver.start_stream)
+        self.stream_thread.start()  # Start the receiver thread once
 
     def validateIpAddress(self):
         for ip in self.ip_list:
@@ -66,22 +70,17 @@ class Client:
 
     def switch_stream(self, new_ip):
         """Stop the current stream and start a new one from the given IP."""
-        # Stop the current stream receiver if it's running and notify the server to stop
-        if self.current_stream_receiver is not None:
-            self.send_stop_stream(self.current_stream_ip)  # Notify previous server to stop
-            self.current_stream_receiver.stop_stream()
-            self.current_stream_receiver = None
+        # Stop the current stream from the previous server and notify the server to stop
+        if self.current_stream_ip:
+            self.send_stop_stream(self.current_stream_ip)
 
-        # Initialize and start a new StreamReceiver before sending START_STREAM
+        # Change the target server IP in the existing StreamReceiver
         self.current_stream_ip = new_ip
-        self.current_stream_receiver = StreamReceiver(new_ip, self.stream_port)
-
-        # Start the StreamReceiver in a new thread to keep it non-blocking
-        stream_thread = threading.Thread(target=self.current_stream_receiver.start_stream)
-        stream_thread.start()
+        self.stream_receiver.set_target_ip(new_ip)  # Set the new server IP
 
         # Send START_STREAM message to the new server
         self.send_start_stream(new_ip)
+
 
     def send_start_stream(self, server_ip):
         """Send a START_STREAM message to the specified server."""
