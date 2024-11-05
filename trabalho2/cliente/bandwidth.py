@@ -27,11 +27,11 @@ class BandwidthMonitor:
                     self.client_socket.sendto(message, (self.ip, self.port))
 
                     # Wait for response from server
-                    received_data, _ = self.client_socket.recvfrom(self.data_size + 4)
+                    received_data, _ = self.client_socket.recvfrom(self.data_size)
                     end_time = time.time()
 
                     # Check if we received the expected data size
-                    if len(received_data) == self.data_size + 4:
+                    if len(received_data) == self.data_size:
                         duration = end_time - start_time
                         times.append(duration)  # Append RTT for this packet
                     else:

@@ -1,10 +1,11 @@
 import threading
 import time
+import socket
 from bandwidth import BandwidthMonitor
 from stream_rcv import StreamReceiver
 
 class Client:
-    def __init__(self, ip_list, port=12346, stream_port=12345):
+    def __init__(self, ip_list, port=12346, stream_port=12346):
         self.port = port
         self.stream_port = stream_port
         self.bandwidth_dict = {}  # Shared dictionary for all IPs' bandwidth measurements
@@ -47,7 +48,7 @@ class Client:
     def manage_stream(self):
         """Periodically checks bandwidth and switches to the best available stream."""
         while True:
-            time.sleep(30)  # Wait 30 seconds to check bandwidth updates
+            time.sleep(3)  # Wait 3 seconds to check bandwidth updates
             
             with self.lock:
                 # Find the IP with the highest bandwidth
@@ -65,15 +66,33 @@ class Client:
 
     def switch_stream(self, new_ip):
         """Stop the current stream and start a new one from the given IP."""
-        # Stop the current stream receiver if it's running
+        # Stop the current stream receiver if it's running and notify the server to stop
         if self.current_stream_receiver is not None:
+            self.send_stop_stream(self.current_stream_ip)  # Notify previous server to stop
             self.current_stream_receiver.stop_stream()
             self.current_stream_receiver = None
 
-        # Start a new StreamReceiver for the new IP
+        # Initialize and start a new StreamReceiver before sending START_STREAM
         self.current_stream_ip = new_ip
         self.current_stream_receiver = StreamReceiver(new_ip, self.stream_port)
 
-        # Run the new stream in a separate thread to keep it non-blocking
+        # Start the StreamReceiver in a new thread to keep it non-blocking
         stream_thread = threading.Thread(target=self.current_stream_receiver.start_stream)
         stream_thread.start()
+
+        # Send START_STREAM message to the new server
+        self.send_start_stream(new_ip)
+
+    def send_start_stream(self, server_ip):
+        """Send a START_STREAM message to the specified server."""
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+            message = b"START_STREAM"
+            sock.sendto(message, (server_ip, self.port))
+            print(f"Sent START_STREAM to {server_ip}:{self.port}")
+
+    def send_stop_stream(self, server_ip):
+        """Send a STOP_STREAM message to the specified server."""
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+            message = b"STOP_STREAM"
+            sock.sendto(message, (server_ip, self.port))
+            print(f"Sent STOP_STREAM to {server_ip}:{self.port}")

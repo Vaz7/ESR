@@ -12,6 +12,9 @@ class StreamReceiver:
         self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.client_socket.settimeout(5)  # Set a timeout for receiving packets
 
+        # Bind to a fixed port to receive the stream
+        self.client_socket.bind(('', self.port))
+
     def start_stream(self):
         """Start receiving video stream from the server."""
         self.running = True
@@ -35,11 +38,16 @@ class StreamReceiver:
                 # If we've collected the whole frame, decode and display it
                 if len(data) >= expected_frame_size:
                     frame = np.frombuffer(data, dtype=np.uint8)
-                    frame = cv2.imdecode(frame, cv2.IMREAD_COLOR)
-                    if frame is not None:
-                        cv2.imshow("Video Stream", frame)
-                        cv2.waitKey(1)
-                    data = b""  # Reset for next frame
+                    
+                    try:
+                        frame = cv2.imdecode(frame, cv2.IMREAD_COLOR)
+                        if frame is not None:
+                            cv2.imshow("Video Stream", frame)
+                            cv2.waitKey(1)
+                    except cv2.error as e:
+                        print("Frame decoding error:", e)
+                
+                data = b""  # Reset for next fram
 
             except socket.timeout:
                 print("Stream receiver timeout. No data received.")
@@ -48,6 +56,9 @@ class StreamReceiver:
         cv2.destroyAllWindows()
 
     def stop_stream(self):
-        """Stop receiving video stream."""
+        """Stop receiving video stream and reset the state."""
         self.running = False
         print(f"Stopped receiving stream from {self.ip}:{self.port}")
+        self.client_socket.close()
+        cv2.destroyAllWindows()
+
