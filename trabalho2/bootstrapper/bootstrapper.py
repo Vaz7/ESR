@@ -8,7 +8,6 @@ def readJsonFile(filePath):
     with open(filePath, 'r') as file:
         return json.load(file)
 
-
 def handle_client(client_socket, addr, vizinhancas):
     client_ip = addr[0]
     
@@ -22,7 +21,6 @@ def handle_client(client_socket, addr, vizinhancas):
     
     client_socket.close()
 
-
 def serve_vizinhos(vizinhacas):
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server_socket.bind(('0.0.0.0', 12222))
@@ -33,29 +31,29 @@ def serve_vizinhos(vizinhacas):
     while True:
         client_socket, addr = server_socket.accept()
         print(f"Connection from {addr} has been established for retrieving neighbour info.")
-        client_handler = threading.Thread(target=handle_client, args=(client_socket, addr,vizinhacas))
+        client_handler = threading.Thread(target=handle_client, args=(client_socket, addr, vizinhacas))
         client_handler.start()
-
-
-
 
 def main():
     args = sys.argv[1:]
 
-    if "--file" in args:
-        file_index = args.index("--file") + 1
+    if "--file" not in args:
+        print("Usage: python3 bootstrapper.py --file <JSON_FILE_PATH>")
+        sys.exit(1)
+    
+    file_index = args.index("--file") + 1
 
-        if (file_index < len(args) and not args[file_index].startswith("--")):
-            vizinhancas = readJsonFile(args[file_index])
-        else:
-            print("No file path provided after --file.")
-    else:
-        print("No --file flag provided, bootstrapper needs to read a valid json file!")
+    # Check if the file path is provided and valid
+    if file_index >= len(args) or args[file_index].startswith("--"):
+        print("Usage: python3 bootstrapper.py --file <JSON_FILE_PATH>")
+        sys.exit(1)
+
+    file_path = args[file_index]
+    vizinhancas = readJsonFile(file_path)
 
     requestsThread = threading.Thread(target=serve_vizinhos, args=(vizinhancas,))
     requestsThread.start()
     requestsThread.join()
-
 
 if __name__ == "__main__":
     main()
