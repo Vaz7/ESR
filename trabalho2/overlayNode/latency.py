@@ -2,11 +2,36 @@ import time
 import threading
 import socket
 
+class LatencyManager:
+    def __init__(self):
+        self.lock = threading.Lock()  # To ensure thread-safe access
+        self.server_latencies = {}  # Dictionary to store latencies for each server
+
+    def update_latency(self, server_ip, latency):
+        """Update the latency for a given server."""
+        with self.lock:
+            self.server_latencies[server_ip] = latency
+            print(f"Updated latency for {server_ip}: {latency:.2f} ms")
+
+    def get_best_server(self):
+        """Get the IP of the server with the lowest latency."""
+        with self.lock:
+            if not self.server_latencies:
+                return None
+            return min(self.server_latencies, key=self.server_latencies.get)
+
+    def print_latencies(self):
+        """Print the current latencies for all tracked servers."""
+        with self.lock:
+            print("Current latencies for connected servers:")
+            for server, latency in self.server_latencies.items():
+                print(f"Server {server}: {latency:.2f} ms")
+
 class LatencyHandler:
-    def __init__(self, port, vizinhos):
+    def __init__(self, port, vizinhos, latency_manager):
         self.port = port
         self.vizinhos = vizinhos  # Ensure clean IP formatting
-        self.server_latencies = {}  # Dictionary to store latencies for each server
+        self.latency_manager = latency_manager  # Reference to the LatencyManager instance
 
     def start(self):
         """Start the thread to receive and forward timestamps."""
@@ -37,8 +62,7 @@ class LatencyHandler:
 
                 # Calculate latency
                 latency = (received_time - sent_time) * 1000  # Convert to milliseconds
-                self.server_latencies[addr[0]] = latency
-                print(f"Received timestamp from {addr[0]}. Calculated latency: {latency:.2f} ms")
+                self.latency_manager.update_latency(addr[0], latency)
 
                 # Close the connection after receiving the data
                 client_socket.close()
@@ -78,8 +102,3 @@ class LatencyHandler:
             # Adding a slight delay between connections to avoid overwhelming the network
             time.sleep(1)
 
-    def print_server_latencies(self):
-        """Print the current latencies for all tracked servers."""
-        print("Current latencies for connected servers:")
-        for server, latency in self.server_latencies.items():
-            print(f"Server {server}: {latency:.2f} ms")

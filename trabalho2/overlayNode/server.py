@@ -1,10 +1,10 @@
 import socket
 import threading
 import time
-from stream import VideoStreamer
 import sys
+from latency import LatencyManager
 from latency import LatencyHandler
-
+from stream_forwarder import StreamForwarder
 class Server:
     
     def __init__(self, port,bootstrapper_IP):
@@ -13,8 +13,6 @@ class Server:
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.server_socket.bind(("0.0.0.0", self.port))
         
-        # Initialize the VideoStreamer for handling streaming requests
-        #self.video_streamer = VideoStreamer(video_path, port)
 
     def start(self):
         print(f"Server listening on UDP port {self.port}")
@@ -22,8 +20,12 @@ class Server:
         print(f"Fetching neighbours from bootstrapper at {self.bootstrapper_IP}")
 
         listaVizinhos = self.getNeighbours(self.bootstrapper_IP)
-        latencyHandle = LatencyHandler(13333,listaVizinhos)
-        latencyHandle.start()
+
+        latency_manager = LatencyManager()
+        latency_handler = LatencyHandler(port=13333, vizinhos=listaVizinhos, latency_manager=latency_manager)
+        latency_handler.start()
+
+        streamForwarder = StreamForwarder(self.server_socket,latency_manager)        
         
 
 
@@ -44,7 +46,8 @@ class Server:
                 client_socket.close()
                 sys.exit(1)
 
-            ip_list = response_decoded.split(',')
+            ip_list = [ip.strip() for ip in response_decoded.split(',')]
+
 
             client_socket.close()
             return ip_list
