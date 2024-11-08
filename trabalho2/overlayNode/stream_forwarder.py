@@ -3,6 +3,7 @@ import struct
 import threading
 import time
 from latency import LatencyManager
+from bandwidth import BandwidthHandler
 
 class StreamForwarder:
     def __init__(self, server_socket, latency_manager, max_packet_size=60000):
@@ -34,17 +35,23 @@ class StreamForwarder:
                 data, addr = self.server_socket.recvfrom(1024)
                 message = data.decode().strip().upper()
 
-                if message == "START":
+                if message == "START_STREAM":
                     self.add_client(addr)
                     print(f"Received START request from {addr}. Added to streaming list.")
-                elif message == "STOP":
+                elif message == "STOP_STREAM":
                     self.remove_client(addr)
                     print(f"Received STOP request from {addr}. Removed from streaming list.")
                 else:
-                    print(f"Unknown control message received from {addr}: {message}")
+                    self.handle_bandwidth_packet(data, addr)
+                    
 
             except Exception as e:
                 print(f"Error handling control message: {e}")
+
+    def handle_bandwidth_packet(self, data, addr):
+        """Handle a packet related to bandwidth testing."""
+        handler = BandwidthHandler(data, addr, self.server_socket)
+        handler.respond()  # Send the response back to the client
 
     def receive_data_from_best_server(self):
         """Continuously receive data from the server with the best latency."""
@@ -61,7 +68,7 @@ class StreamForwarder:
             if current_best_ip:
                 try:
                     # Request and receive data from the best server
-                    udp_client_socket.sendto(b"STREAM_REQUEST", (current_best_ip, self.port))
+                    udp_client_socket.sendto(b"START_STREAM", (current_best_ip, 12356))
                     data, _ = udp_client_socket.recvfrom(self.max_packet_size)
                     
                     # Store the received data in the shared buffer
@@ -72,7 +79,7 @@ class StreamForwarder:
                     print(f"Error receiving data from {current_best_ip}: {e}")
                     current_best_ip = None  # Reset to search for a new best server
 
-            time.sleep(0.1)  # Adjust sleep to avoid excessive looping
+            time.sleep(10)  # Adjust sleep to avoid excessive looping
 
     def add_client(self, client_addr):
         """Add a client to the list of active clients."""
@@ -96,6 +103,7 @@ class StreamForwarder:
                 data = self.current_data
 
             if data:
+                print("sent frame")
                 self.send_data_to_client(data, client_addr)
             time.sleep(1 / 30)  # Adjust this to match the desired streaming rate
 
