@@ -83,15 +83,25 @@ class Client:
 
 
     def send_start_stream(self, server_ip):
-        """Send a START_STREAM message to the specified server."""
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
-            message = b"START_STREAM"
-            sock.sendto(message, (server_ip, self.port))
-            print(f"Sent START_STREAM to {server_ip}:{self.port}")
+        """Send a START_STREAM message to the specified server via TCP."""
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+                sock.settimeout(5)  # Set a timeout for the connection
+                sock.connect((server_ip, self.port))  # Connect to the server's control port
+                message = "START_STREAM"
+                sock.sendall(message.encode())
+                print(f"Sent START_STREAM to {server_ip}:{self.port}")
+        except Exception as e:
+            print(f"Failed to send START_STREAM to {server_ip}. Error: {e}")
 
     def send_stop_stream(self, server_ip):
-        """Send a STOP_STREAM message to the specified server."""
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
-            message = b"STOP_STREAM"
-            sock.sendto(message, (server_ip, self.port))
-            print(f"Sent STOP_STREAM to {server_ip}:{self.port}")
+        """Send a STOP_STREAM message to the specified server via TCP."""
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+                sock.settimeout(5)  # Set a timeout for the connection
+                sock.connect((server_ip, self.port))  # Connect to the server's control port
+                message = "STOP_STREAM"
+                sock.sendall(message.encode())
+                print(f"Sent STOP_STREAM to {server_ip}:{self.port}")
+        except Exception as e:
+            print(f"Failed to send STOP_STREAM to {server_ip}. Error: {e}")
