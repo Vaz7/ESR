@@ -5,7 +5,7 @@ from bandwidth import BandwidthMonitor
 from stream_rcv import StreamReceiver
 
 class Client:
-    def __init__(self, ip_list, port=12346, stream_port=12345):
+    def __init__(self, ip_list, port=13333, stream_port=12345):
         self.port = port
         self.stream_port = stream_port
         self.bandwidth_dict = {}  # Shared dictionary for all IPs' bandwidth measurements
