@@ -28,11 +28,10 @@ class StreamReceiver:
             try:
                 # Receive a packet
                 packet, addr = self.client_socket.recvfrom(self.max_packet_size)
-                
                 # Check if packet is from the correct target IP
                 if self.target_ip and addr[0] != self.target_ip:
                     continue  # Ignore packets from other IPs
-
+                
                 packet_id, frame_size = struct.unpack('>HI', packet[:6])
                 
                 # Initialize frame buffer if this is a new frame

@@ -17,10 +17,10 @@ class Server:
         # Initialize the VideoStreamer for handling streaming requests
         self.video_streamer = VideoStreamer(video_path, streaming_port)
 
-        vizinhos = self.getNeighbours(bootstrapper_ip, retry_interval=5, max_retries=10)
-        print(f"Neighbours are: {vizinhos}")
+        self.vizinhos = self.getNeighbours(bootstrapper_ip, retry_interval=5, max_retries=10)
+        print(f"Neighbours are: {self.vizinhos}")
 
-        latencyHandle = LatencyHandler(13334,vizinhos)
+        latencyHandle = LatencyHandler(13334,self.vizinhos)
 
         self.stream_active_clients = set()
         self.lock = threading.Lock()

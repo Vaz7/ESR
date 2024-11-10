@@ -76,7 +76,7 @@ class OverlayNode:
             with self.lock:
                 if self.is_stream_active and self.current_udp_receiver:
                     try:
-                        data, addr = self.server_socket.recvfrom(4096)
+                        data, addr = self.server_socket.recvfrom(60000)
                         # Forward data to the current receiver
                         self.forward_stream_data(self.current_udp_receiver, data)
                     except Exception as e:
