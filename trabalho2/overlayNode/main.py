@@ -11,7 +11,7 @@ def main():
     ip_address = sys.argv[ip_index + 1]
 
     #A porta 12346 vai ser sempre a porta da stream
-    server = Server(streaming_port=12346,bootstrapper_IP=ip_address)
+    server = Server(streaming_port=12346,bootstrapper_ip=ip_address)
     server.start()
 
 if __name__ == "__main__":

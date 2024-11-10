@@ -2,43 +2,42 @@ import socket
 import threading
 import time
 import sys
-from latency import LatencyManager
-from latency import LatencyHandler
-from stream import StreamManager
-class Server:
+from latency import LatencyManager, LatencyHandler
+
+class OverlayNode:
     def __init__(self, streaming_port, bootstrapper_ip, control_port=13333):
         self.streaming_port = streaming_port
         self.control_port = control_port
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.server_socket.bind(("0.0.0.0", streaming_port))
         
-        self.vizinhos = self.getNeighbours(bootstrapper_ip, retry_interval=5, max_retries=10)
-        print(f"Neighbours are: {self.vizinhos}")
+        self.neighbours = self.get_neighbours(bootstrapper_ip, retry_interval=5, max_retries=10)
+        print(f"Neighbours are: {self.neighbours}")
 
-        # Shared state to control the retransmission of the stream
-        self.stream_active = False
-        self.stream_target = None
+        # Shared state for managing streaming
+        self.is_stream_active = False
+        self.current_udp_receiver = None  # Node to which we are sending the stream
+        self.current_udp_source = None    # Node from which we are requesting the stream
         self.lock = threading.Lock()
 
-        # Initialize the LatencyManager, LatencyHandler, and StreamManager
+        # Initialize latency and stream managers
         self.latency_manager = LatencyManager()
-        self.latency_handler = LatencyHandler(13333, self.vizinhos, self.latency_manager)
-        self.stream_manager = StreamManager(self.latency_manager, self.vizinhos)
+        self.latency_handler = LatencyHandler(13334, self.neighbours, self.latency_manager)
 
-        
     def start(self):
-        print(f"Middle node server listening on UDP port {self.streaming_port}")
-        threading.Thread(target=self.latency_handler.start).start()
-        threading.Thread(target=self.stream_manager.check_and_update_stream_path).start()
-        threading.Thread(target=self.receive_control_data).start()
-        threading.Thread(target=self.retransmit_stream).start()
+        """Start all overlay node operations in separate threads."""
+        print(f"Overlay node listening on UDP port {self.streaming_port}")
+        threading.Thread(target=self.latency_handler.start, daemon=True).start()
+        threading.Thread(target=self.periodic_best_node_update, daemon=True).start()
+        threading.Thread(target=self.receive_control_data, daemon=True).start()
+        threading.Thread(target=self.retransmit_stream, daemon=True).start()
 
     def receive_control_data(self):
-        """Listen for control data via TCP."""
+        """Listen for incoming TCP control commands."""
         control_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         control_socket.bind(("0.0.0.0", self.control_port))
         control_socket.listen(5)
-        print(f"Server listening for control data on TCP port {self.control_port}...")
+        print(f"Listening for control data on TCP port {self.control_port}...")
 
         while True:
             client_socket, addr = control_socket.accept()
@@ -51,70 +50,95 @@ class Server:
                     continue
 
                 with self.lock:
-                    if data == "START_STREAM" and addr[0] in self.vizinhos:
-                        self.stream_active = True
-                        self.stream_target = addr[0]
-                        print(f"Received START_STREAM from {addr}. Stream active set to True.")
-                    elif data == "STOP_STREAM" and addr[0] in self.vizinhos:
-                        self.stream_active = False
-                        self.stream_target = None
-                        print(f"Received STOP_STREAM from {addr}. Stream active set to False.")
+                    if data == "START_STREAM":
+                        self.is_stream_active = True
+                        self.current_udp_receiver = addr[0]  # Set the UDP receiver to the sender of START_STREAM
+                        self.current_udp_source = self.latency_manager.get_best_server()  # Determine the best source
+                        print(f"Received START_STREAM from {addr}. UDP receiver set to {self.current_udp_receiver}. Requesting stream from {self.current_udp_source}")
+                        self.send_control_command(self.current_udp_source, "START_STREAM")
+                    elif data == "STOP_STREAM":
+                        if self.is_stream_active:
+                            print(f"Received STOP_STREAM from {addr}. Stopping stream to {self.current_udp_receiver}")
+                            if self.current_udp_source:
+                                self.send_control_command(self.current_udp_source, "STOP_STREAM")
+                        self.is_stream_active = False
+                        self.current_udp_receiver = None
+                        self.current_udp_source = None
 
                 client_socket.close()
             except Exception as e:
-                print(f"Error while receiving control data from {addr}: {e}")
+                print(f"Error while handling control data from {addr}: {e}")
                 client_socket.close()
 
-
     def retransmit_stream(self):
-        """Retransmit the stream to the current stream target if stream is active."""
+        """Retransmit UDP stream chunks to the current UDP receiver."""
         while True:
             with self.lock:
-                if self.stream_active and self.stream_target:
+                if self.is_stream_active and self.current_udp_receiver:
                     try:
                         data, addr = self.server_socket.recvfrom(4096)
-                        # Forward data to the current stream target via UDP
-                        self.forward_stream_data(self.stream_target, data)
+                        # Forward data to the current receiver
+                        self.forward_stream_data(self.current_udp_receiver, data)
                     except Exception as e:
-                        print(f"Error during retransmission to {self.stream_target}: {e}")
+                        print(f"Error during retransmission to {self.current_udp_receiver}: {e}")
 
-    
     def forward_stream_data(self, target_ip, data):
-        """Forward the received data to the target IP via UDP."""
+        """Forward the received data to the specified target IP via UDP."""
         try:
             client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             client_socket.sendto(data, (target_ip, self.streaming_port))
             client_socket.close()
-            print(f"Forwarded data to {target_ip}")
+            print(f"Data forwarded to {target_ip}")
         except Exception as e:
             print(f"Failed to forward data to {target_ip}. Error: {e}")
 
+    def periodic_best_node_update(self):
+        """Periodically checks for the best node based on latency and updates the UDP source."""
+        while True:
+            time.sleep(10)  # Adjust interval as needed
+            with self.lock:
+                if self.is_stream_active:
+                    new_udp_source = self.latency_manager.get_best_server()
+                    if new_udp_source and new_udp_source != self.current_udp_source:
+                        print(f"Better UDP source found: {new_udp_source}. Switching stream source.")
+                        # Stop the stream from the current source
+                        self.send_control_command(self.current_udp_source, "STOP_STREAM")
+                        self.current_udp_source = new_udp_source
+                        # Request stream from the new source
+                        self.send_control_command(new_udp_source, "START_STREAM")
 
+    def send_control_command(self, target_ip, command):
+        """Send a control command to a specified node."""
+        try:
+            control_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            control_socket.connect((target_ip, self.control_port))
+            control_socket.send(command.encode())
+            control_socket.close()
+            print(f"Sent '{command}' to {target_ip}")
+        except Exception as e:
+            print(f"Failed to send '{command}' to {target_ip}. Error: {e}")
 
-    def getNeighbours(self, bootstrapper_IP, port=12222):
+    def get_neighbours(self, bootstrapper_ip, port=12222, retry_interval=5, max_retries=10):
+        """Retrieve a list of neighbor nodes."""
         try:
             client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            client_socket.connect((bootstrapper_IP, port))
+            client_socket.connect((bootstrapper_ip, port))
+            client_socket.send("Hello, Server!".encode())
+            response = client_socket.recv(4096).decode()
 
-            message = "Hello, Server!"
-            client_socket.send(message.encode())
-
-            response = client_socket.recv(4096)
-            response_decoded = response.decode()
-    
-            # Neste caso o nodo nao tem vizinhos, mais vale nao estar a gastar letcidade
-            if response_decoded == "ERROR":
-                print("No neighbours exist. Exiting program.")
+            if response == "ERROR":
+                print("No neighbours found. Exiting.")
                 client_socket.close()
                 sys.exit(1)
 
-            ip_list = [ip.strip() for ip in response_decoded.split(',')]
-
-
+            ip_list = [ip.strip() for ip in response.split(',')]
             client_socket.close()
             return ip_list
 
         except Exception as e:
-            print(f"Failed to connect to {bootstrapper_IP} on port {port}. Error: {e}")
-            sys.exit(1)  # Exit the program on exception
+            print(f"Failed to connect to {bootstrapper_ip} on port {port}. Error: {e}")
+            sys.exit(1)
 
+# Usage:
+# node = OverlayNode(streaming_port=12345, bootstrapper_ip="192.168.1.1")
+# node.start()

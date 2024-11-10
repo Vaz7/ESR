@@ -20,7 +20,7 @@ class Server:
         vizinhos = self.getNeighbours(bootstrapper_ip, retry_interval=5, max_retries=10)
         print(f"Neighbours are: {vizinhos}")
 
-        latencyHandle = LatencyHandler(13333,vizinhos)
+        latencyHandle = LatencyHandler(13334,vizinhos)
 
         self.stream_active_clients = set()
         self.lock = threading.Lock()

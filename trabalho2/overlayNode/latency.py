@@ -85,7 +85,7 @@ class LatencyHandler:
                 # Create a TCP connection to each neighbor
                 client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 client_socket.settimeout(5)  # Set a 5-second timeout for the connection attempt
-                client_socket.connect((ip, 13333))  # Assume the same port for neighbors
+                client_socket.connect((ip, self.port))  # Assume the same port for neighbors
 
                 # Send the timestamp
                 client_socket.send(timestamp.encode())
