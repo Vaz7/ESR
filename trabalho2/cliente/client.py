@@ -5,7 +5,7 @@ from latency import LatencyMonitor
 from stream_rcv import StreamReceiver
 
 class Client:
-    def __init__(self, ip_list, port=13335, stream_port=12346):
+    def __init__(self, ip_list, port=13333, stream_port=12346):
         self.port = port
         self.stream_port = stream_port
         self.latency_dict = {}  # Shared dictionary for all IPs' latency measurements
@@ -37,7 +37,7 @@ class Client:
             raise ValueError(f"Invalid IP address in the list")
 
         for ip in self.ip_list:
-            monitor = LatencyMonitor(ip, self.port, self.latency_dict)
+            monitor = LatencyMonitor(ip, 13335, self.latency_dict)
             self.monitors.append(monitor)
 
         # Start a thread for each latencyMonitor instance
@@ -61,7 +61,7 @@ class Client:
                     continue
                 
                 best_latency = self.latency_dict[best_ip]
-                print(f"Best available latency: {best_latency} Mbps from {best_ip}")
+                print(f"Best available latency: {best_latency} ms from {best_ip}")
 
                 # Switch to the new stream if it's better than the current one
                 if self.current_stream_ip != best_ip:

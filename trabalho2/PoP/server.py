@@ -73,16 +73,16 @@ class OverlayNode:
 
     def receive_client_latency_request(self):
         """Listen for incoming latency requests from clients."""
-        latency_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        latency_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         latency_socket.bind(("0.0.0.0", 13335))
-        print(f"Overlay node listening for latency requests on UDP port {self.port}...")
+        print(f"Overlay node listening for latency requests on UDP port {13335}...")
 
         while True:
             try:
                 data, client_addr = latency_socket.recvfrom(1024)
                 if data.decode() == "LATENCY_REQUEST":
                     # Respond with the latency to the best server
-                    best_latency, _ = self.latency_manager.get_best_server()
+                    _,best_latency = self.latency_manager.get_best_server()
                     current_timestamp = time.time()
                     if best_latency:
                         response = f"{best_latency},{current_timestamp}"
