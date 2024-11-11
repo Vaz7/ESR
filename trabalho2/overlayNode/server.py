@@ -27,10 +27,10 @@ class OverlayNode:
     def start(self):
         """Start all overlay node operations in separate threads."""
         print(f"Overlay node listening on UDP port {self.streaming_port}")
-        threading.Thread(target=self.latency_handler.start, daemon=True).start()
-        threading.Thread(target=self.periodic_best_node_update, daemon=True).start()
-        threading.Thread(target=self.receive_control_data, daemon=True).start()
-        threading.Thread(target=self.retransmit_stream, daemon=True).start()
+        threading.Thread(target=self.latency_handler.start).start()
+        threading.Thread(target=self.periodic_best_node_update).start()
+        threading.Thread(target=self.receive_control_data).start()
+        threading.Thread(target=self.retransmit_stream).start()
 
     def receive_control_data(self):
         """Listen for incoming TCP control commands."""
@@ -88,7 +88,6 @@ class OverlayNode:
             client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             client_socket.sendto(data, (target_ip, self.streaming_port))
             client_socket.close()
-            print(f"Data forwarded to {target_ip}")
         except Exception as e:
             print(f"Failed to forward data to {target_ip}. Error: {e}")
 
