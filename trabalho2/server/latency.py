@@ -24,7 +24,7 @@ class LatencyHandler:
                     # Send a timestamped message to initiate latency calculation
                     timestamp = str(time.time())
                     client_socket.send(timestamp.encode())
-                    print(f"Sent latency initiation message to {ip} at {timestamp}")
+                    print(f"Sent latency initiation message to {ip}")
     
                     # Close the connection
                     client_socket.close()
