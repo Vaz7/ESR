@@ -90,7 +90,7 @@ class LatencyHandler:
 
                 # Send the timestamp
                 client_socket.send(timestamp.encode())
-                print(f"Forwarded timestamp {timestamp} to {ip}")
+                print(f"Forwarded timestamp to {ip}")
 
                 # Close the connection
                 client_socket.close()
