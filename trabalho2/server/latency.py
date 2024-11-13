@@ -19,12 +19,12 @@ class LatencyHandler:
                     # Create a TCP connection to the client
                     client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                     client_socket.settimeout(5)  # Set a 5-second timeout for the connection attempt
-                    client_socket.connect((ip, 13333))
+                    client_socket.connect((ip, self.port))
     
                     # Send a timestamped message to initiate latency calculation
                     timestamp = str(time.time())
                     client_socket.send(timestamp.encode())
-                    print(f"Sent latency initiation message to {ip} at {timestamp}")
+                    print(f"Sent latency initiation message to {ip}")
     
                     # Close the connection
                     client_socket.close()

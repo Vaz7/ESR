@@ -31,6 +31,7 @@ class OverlayNode:
         threading.Thread(target=self.periodic_best_node_update).start()
         threading.Thread(target=self.receive_control_data).start()
         threading.Thread(target=self.retransmit_stream).start()
+        threading.Thread(target=self.receive_client_latency_request).start()
 
     def receive_control_data(self):
         """Listen for incoming TCP control commands."""
@@ -53,7 +54,7 @@ class OverlayNode:
                     if data == "START_STREAM":
                         self.is_stream_active = True
                         self.current_udp_receiver = addr[0]  # Set the UDP receiver to the sender of START_STREAM
-                        self.current_udp_source = self.latency_manager.get_best_server()  # Determine the best source
+                        self.current_udp_source, _ = self.latency_manager.get_best_server()  # Determine the best source
                         print(f"Received START_STREAM from {addr}. UDP receiver set to {self.current_udp_receiver}. Requesting stream from {self.current_udp_source}")
                         self.send_control_command(self.current_udp_source, "START_STREAM")
                     elif data == "STOP_STREAM":
@@ -69,6 +70,31 @@ class OverlayNode:
             except Exception as e:
                 print(f"Error while handling control data from {addr}: {e}")
                 client_socket.close()
+
+    def receive_client_latency_request(self):
+        """Listen for incoming latency requests from clients."""
+        latency_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        latency_socket.bind(("0.0.0.0", 13335))
+        print(f"Overlay node listening for latency requests on UDP port {13335}...")
+
+        while True:
+            try:
+                data, client_addr = latency_socket.recvfrom(1024)
+                if data.decode() == "LATENCY_REQUEST":
+                    # Respond with the latency to the best server
+                    _,best_latency = self.latency_manager.get_best_server()
+                    current_timestamp = time.time()
+                    if best_latency:
+                        response = f"{best_latency},{current_timestamp}"
+                    else:
+                        response = "NO_DATA"
+                
+                    latency_socket.sendto(response.encode(), client_addr)
+                    print(f"Sent latency data to {client_addr}: {response}")
+                    
+            except Exception as e:
+                print(f"Error while handling latency request: {e}")
+
 
     def retransmit_stream(self):
         """Retransmit UDP stream chunks to the current UDP receiver."""
@@ -97,7 +123,7 @@ class OverlayNode:
             time.sleep(10)  # Adjust interval as needed
             with self.lock:
                 if self.is_stream_active:
-                    new_udp_source = self.latency_manager.get_best_server()
+                    new_udp_source, _ = self.latency_manager.get_best_server()
                     if new_udp_source and new_udp_source != self.current_udp_source:
                         print(f"Better UDP source found: {new_udp_source}. Switching stream source.")
                         # Stop the stream from the current source
@@ -105,6 +131,7 @@ class OverlayNode:
                         self.current_udp_source = new_udp_source
                         # Request stream from the new source
                         self.send_control_command(new_udp_source, "START_STREAM")
+
 
     def send_control_command(self, target_ip, command):
         """Send a control command to a specified node."""

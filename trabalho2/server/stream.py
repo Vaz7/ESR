@@ -86,7 +86,7 @@ class VideoStreamer:
         offset = 0
 
         # Override the port in client_addr with 12346
-        target_addr = (client_addr[0], 12345)
+        target_addr = (client_addr[0], 12346)
 
         while offset < frame_size:
             chunk = frame_data[offset:offset + self.max_packet_size - 8]

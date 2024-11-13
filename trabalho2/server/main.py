@@ -10,12 +10,10 @@ def main():
         print("Usage: python3 main.py --ip <BOOTSTRAPPER_IP_ADDRESS>")
         sys.exit(1)
 
-
     ip_index = sys.argv.index("--ip")
     ip_address = sys.argv[ip_index + 1]
 
-    #A porta 12346 vai ser sempre a porta da stream
-    server = Server(video_path,12346,ip_address)
+    server = Server(video_path=video_path, bootstrapper_ip=ip_address, streaming_port=12346)  
     server.start()
 
 if __name__ == "__main__":

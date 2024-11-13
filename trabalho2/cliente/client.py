@@ -1,14 +1,14 @@
 import threading
 import time
 import socket
-from bandwidth import BandwidthMonitor
+from latency import LatencyMonitor
 from stream_rcv import StreamReceiver
 
 class Client:
-    def __init__(self, ip_list, port=12346, stream_port=12345):
+    def __init__(self, ip_list, port=13333, stream_port=12346):
         self.port = port
         self.stream_port = stream_port
-        self.bandwidth_dict = {}  # Shared dictionary for all IPs' bandwidth measurements
+        self.latency_dict = {}  # Shared dictionary for all IPs' latency measurements
         self.monitors = []  # List to keep track of monitor threads
         self.ip_list = ip_list
         self.current_stream_ip = None
@@ -37,31 +37,31 @@ class Client:
             raise ValueError(f"Invalid IP address in the list")
 
         for ip in self.ip_list:
-            monitor = BandwidthMonitor(ip, self.port, self.bandwidth_dict)
+            monitor = LatencyMonitor(ip, 13335, self.latency_dict)
             self.monitors.append(monitor)
 
-        # Start a thread for each BandwidthMonitor instance
+        # Start a thread for each latencyMonitor instance
         for monitor in self.monitors:
-            monitor_thread = threading.Thread(target=monitor.measure_bandwidth)
+            monitor_thread = threading.Thread(target=monitor.measure_latency)
             monitor_thread.start()
 
-        # Start a thread to monitor and switch streams based on bandwidth
+        # Start a thread to monitor and switch streams based on latency
         stream_manager_thread = threading.Thread(target=self.manage_stream)
         stream_manager_thread.start()
 
     def manage_stream(self):
-        """Periodically checks bandwidth and switches to the best available stream."""
+        """Periodically checks latency and switches to the best available stream."""
         while True:
-            time.sleep(3)  # Wait 3 seconds to check bandwidth updates
+            time.sleep(5)  # Wait 3 seconds to check latency updates
             
             with self.lock:
-                # Find the IP with the highest bandwidth
-                best_ip = max(self.bandwidth_dict, key=self.bandwidth_dict.get, default=None)
+                # Find the IP with the highest latency
+                best_ip = min(self.latency_dict, key=self.latency_dict.get, default=None)
                 if best_ip is None:
                     continue
                 
-                best_bandwidth = self.bandwidth_dict[best_ip]
-                print(f"Best available bandwidth: {best_bandwidth} Mbps from {best_ip}")
+                best_latency = self.latency_dict[best_ip]
+                print(f"Best available latency: {best_latency} ms from {best_ip}")
 
                 # Switch to the new stream if it's better than the current one
                 if self.current_stream_ip != best_ip:
@@ -83,15 +83,25 @@ class Client:
 
 
     def send_start_stream(self, server_ip):
-        """Send a START_STREAM message to the specified server."""
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
-            message = b"START_STREAM"
-            sock.sendto(message, (server_ip, self.port))
-            print(f"Sent START_STREAM to {server_ip}:{self.port}")
+        """Send a START_STREAM message to the specified server via TCP."""
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+                sock.settimeout(5)  # Set a timeout for the connection
+                sock.connect((server_ip, self.port))  # Connect to the server's control port
+                message = "START_STREAM"
+                sock.sendall(message.encode())
+                print(f"Sent START_STREAM to {server_ip}:{self.port}")
+        except Exception as e:
+            print(f"Failed to send START_STREAM to {server_ip}. Error: {e}")
 
     def send_stop_stream(self, server_ip):
-        """Send a STOP_STREAM message to the specified server."""
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
-            message = b"STOP_STREAM"
-            sock.sendto(message, (server_ip, self.port))
-            print(f"Sent STOP_STREAM to {server_ip}:{self.port}")
+        """Send a STOP_STREAM message to the specified server via TCP."""
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+                sock.settimeout(5)  # Set a timeout for the connection
+                sock.connect((server_ip, self.port))  # Connect to the server's control port
+                message = "STOP_STREAM"
+                sock.sendall(message.encode())
+                print(f"Sent STOP_STREAM to {server_ip}:{self.port}")
+        except Exception as e:
+            print(f"Failed to send STOP_STREAM to {server_ip}. Error: {e}")

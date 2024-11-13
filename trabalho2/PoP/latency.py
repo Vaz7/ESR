@@ -14,11 +14,12 @@ class LatencyManager:
             print(f"Updated latency for {server_ip}: {latency:.2f} ms")
 
     def get_best_server(self):
-        """Get the IP of the server with the lowest latency."""
+        """Get the best latency and its corresponding server IP."""
         with self.lock:
             if not self.server_latencies:
-                return None
-            return min(self.server_latencies, key=self.server_latencies.get)
+                return None, None
+            best_server = min(self.server_latencies, key=self.server_latencies.get)
+            return best_server, self.server_latencies[best_server]
 
     def print_latencies(self):
         """Print the current latencies for all tracked servers."""
@@ -89,7 +90,7 @@ class LatencyHandler:
 
                 # Send the timestamp
                 client_socket.send(timestamp.encode())
-                print(f"Forwarded timestamp to {ip}")
+                print(f"Forwarded timestamp {timestamp} to {ip}")
 
                 # Close the connection
                 client_socket.close()
