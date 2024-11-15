@@ -5,14 +5,12 @@ import sys
 from latency import LatencyManager, LatencyHandler
 
 class OverlayNode:
-    def __init__(self, streaming_port, bootstrapper_ip, control_port=13333):
+    def __init__(self, streaming_port, control_port=13333):
         self.streaming_port = streaming_port
         self.control_port = control_port
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.server_socket.bind(("0.0.0.0", streaming_port))
         
-        self.neighbours = self.get_neighbours(bootstrapper_ip, retry_interval=5, max_retries=10)
-        print(f"Neighbours are: {self.neighbours}")
 
         # Shared state for managing streaming
         self.is_stream_active = False
@@ -22,11 +20,11 @@ class OverlayNode:
 
         # Initialize latency and stream managers
         self.latency_manager = LatencyManager()
-        self.latency_handler = LatencyHandler(13334, self.neighbours, self.latency_manager)
+        self.latency_handler = LatencyHandler(13334,self.latency_manager)
 
     def start(self):
         """Start all overlay node operations in separate threads."""
-        print(f"Overlay node listening on UDP port {self.streaming_port}")
+        print(f"PoP node listening on UDP port {self.streaming_port}")
         threading.Thread(target=self.latency_handler.start).start()
         threading.Thread(target=self.periodic_best_node_update).start()
         threading.Thread(target=self.receive_control_data).start()
@@ -75,7 +73,7 @@ class OverlayNode:
         """Listen for incoming latency requests from clients."""
         latency_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         latency_socket.bind(("0.0.0.0", 13335))
-        print(f"Overlay node listening for latency requests on UDP port {13335}...")
+        print(f"PoP node listening for latency requests on UDP port {13335}...")
 
         while True:
             try:

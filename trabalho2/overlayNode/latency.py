@@ -56,6 +56,7 @@ class LatencyHandler:
                 if not data:
                     client_socket.close()
                     continue
+                
 
                 received_time = time.time()
                 sent_time = float(data)
@@ -64,11 +65,11 @@ class LatencyHandler:
                 latency = (received_time - sent_time) * 1000  # Convert to milliseconds
                 self.latency_manager.update_latency(addr[0], latency)
 
+                # Forward the received timestamp to all neighbors except the sender
+                self.forward_timestamp_to_neighbours(data, addr[0])
                 # Close the connection after receiving the data
                 client_socket.close()
 
-                # Forward the received timestamp to all neighbors except the sender
-                self.forward_timestamp_to_neighbours(data, addr[0])
 
             except Exception as e:
                 print(f"Error while receiving or processing timestamp from {addr}: {e}")
