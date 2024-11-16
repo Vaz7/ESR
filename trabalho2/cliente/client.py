@@ -13,6 +13,8 @@ class Client:
         self.ip_list = ip_list
         self.current_stream_ip = None
         self.available_videos = []  # List of available videos
+        self.video_selected = None  # Chosen video for streaming
+        self.first_video_received = False  # Track if video info has been received
         self.lock = threading.Lock()
 
         # Initialize a single StreamReceiver to receive data on stream_port
@@ -32,10 +34,10 @@ class Client:
                 if num < 0 or num > 255:
                     return False
         return True
-    
+
     def start_monitoring(self):
         if not self.validateIpAddress():
-            raise ValueError(f"Invalid IP address in the list")
+            raise ValueError("Invalid IP address in the list")
 
         for ip in self.ip_list:
             monitor = LatencyMonitor(ip, 13335, self.latency_dict)
@@ -60,18 +62,23 @@ class Client:
                 best_ip = min(self.latency_dict, key=self.latency_dict.get, default=None)
                 if best_ip is None:
                     continue
-                
+
                 best_latency = self.latency_dict[best_ip]
                 print(f"Best available latency: {best_latency} ms from {best_ip}")
 
-                # If we have a new stream IP or no current stream, prompt user to choose a video
+                # If we have a new stream IP or no current stream, process the first timestamp
                 if self.current_stream_ip != best_ip:
                     self.current_stream_ip = best_ip
-                    self.receive_timestamp_and_videos(best_ip)
-                    self.prompt_video_choice(best_ip)
+                    if not self.first_video_received:
+                        self.receive_timestamp_and_videos(best_ip)
+                    if self.video_selected:
+                        self.send_start_stream(best_ip, self.video_selected)
 
     def receive_timestamp_and_videos(self, server_ip):
         """Receive a timestamp message containing the available video list from the server."""
+        if self.first_video_received:
+            return  # Only process the first received video list
+
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
                 sock.settimeout(5)  # Set a timeout for the connection
@@ -84,13 +91,15 @@ class Client:
                     if len(parts) > 1:
                         self.available_videos = parts[1].split(',')  # Extract video list
                         print(f"Available videos from {server_ip}: {', '.join(self.available_videos)}")
+                        self.first_video_received = True  # Mark as received
+                        self.prompt_video_choice()
                     else:
                         print(f"Received timestamp but no video list from {server_ip}.")
         except Exception as e:
             print(f"Failed to receive timestamp and video list from {server_ip}. Error: {e}")
 
-    def prompt_video_choice(self, server_ip):
-        """Prompt the user to choose a video and handle starting the stream."""
+    def prompt_video_choice(self):
+        """Prompt the user to choose a video and store the selection."""
         if not self.available_videos:
             print("No available videos to display.")
             return
@@ -102,13 +111,14 @@ class Client:
         try:
             choice = int(input("Enter the number of the video you want to stream: "))
             if 1 <= choice <= len(self.available_videos):
-                selected_video = self.available_videos[choice - 1]
-                print(f"Starting stream for video: {selected_video}")
-                self.send_start_stream(server_ip, selected_video)
+                self.video_selected = self.available_videos[choice - 1]
+                print(f"Selected video: {self.video_selected}")
             else:
                 print("Invalid choice. Please try again.")
+                self.first_video_received = False  # Allow retry if selection fails
         except ValueError:
             print("Invalid input. Please enter a number.")
+            self.first_video_received = False  # Allow retry if selection fails
 
     def send_start_stream(self, server_ip, video_name):
         """Send a START_STREAM message with the video name to the specified server via TCP."""

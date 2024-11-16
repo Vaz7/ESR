@@ -7,7 +7,7 @@ from stream import VideoStreamer
 
 class Server:
     def __init__(self, video_paths, bootstrapper_ip, streaming_port=12346, control_port=13333):
-        self.video_paths = {f"video_{i+1}": path for i, path in enumerate(video_paths)}
+        self.video_paths = video_paths
         self.streaming_port = streaming_port
         self.control_port = control_port
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
