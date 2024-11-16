@@ -30,8 +30,9 @@ class LatencyManager:
 class LatencyHandler:
     def __init__(self, port, vizinhos, latency_manager):
         self.port = port
-        self.vizinhos = vizinhos  # Ensure clean IP formatting
-        self.latency_manager = latency_manager  # Reference to the LatencyManager instance
+        self.vizinhos = vizinhos
+        self.latency_manager = latency_manager
+        self.connections = {}  # Dictionary to store persistent connections
 
     def start(self):
         """Start the thread to receive and forward timestamps."""
@@ -57,7 +58,6 @@ class LatencyHandler:
                     client_socket.close()
                     continue
                 
-
                 received_time = time.time()
                 sent_time = float(data)
 
@@ -70,7 +70,6 @@ class LatencyHandler:
                 # Close the connection after receiving the data
                 client_socket.close()
 
-
             except Exception as e:
                 print(f"Error while receiving or processing timestamp from {addr}: {e}")
                 client_socket.close()
@@ -82,25 +81,29 @@ class LatencyHandler:
                 print(f"Skipping sending timestamp to {ip} (original sender).")
                 continue
 
-            # Create a separate thread for each forwarding operation
-            threading.Thread(target=self._forward_to_single_neighbour, args=(ip, timestamp)).start()
+            try:
+                # Check if a connection already exists
+                if ip not in self.connections:
+                    # Create and store a new TCP connection if not already open
+                    client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    client_socket.settimeout(5)  # Set a 5-second timeout for the connection attempt
+                    client_socket.connect((ip, self.port))
+                    self.connections[ip] = client_socket
 
-    def _forward_to_single_neighbour(self, ip, timestamp):
-        """Helper function to forward the timestamp to a single neighbor."""
-        try:
-            client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            client_socket.settimeout(5)  # Set a 5-second timeout for the connection attempt
-            client_socket.connect((ip, self.port))  # Assume the same port for neighbors
+                # Send the timestamp through the existing connection
+                self.connections[ip].send(timestamp.encode())
+                print(f"Forwarded timestamp to {ip}")
 
-            # Send the timestamp
-            client_socket.send(timestamp.encode())
-            print(f"Forwarded timestamp to {ip}")
+            except socket.timeout:
+                print(f"Connection to {ip} timed out after 5 seconds.")
+            except Exception as e:
+                print(f"Failed to forward message to {ip}. Error: {e}")
+                # Close and remove the connection if an error occurs
+                if ip in self.connections:
+                    self.connections[ip].close()
+                    del self.connections[ip]
 
-            # Close the connection
-            client_socket.close()
+            # Optional: Implement a slight delay between sends, if needed.
+            # time.sleep(1)
 
-        except socket.timeout:
-            print(f"Connection to {ip} timed out after 5 seconds.")
-        except Exception as e:
-            print(f"Failed to forward message to {ip}. Error: {e}")
 
