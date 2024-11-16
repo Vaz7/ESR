@@ -74,10 +74,10 @@ class OverlayNode:
                 data, client_addr = latency_socket.recvfrom(1024)
                 if data.decode() == "LATENCY_REQUEST":
                     # Respond with the latency to the best server
-                    _, best_latency = self.latency_manager.get_best_server()
+                    _, best_latency,available_videos = self.latency_manager.get_best_server()
                     current_timestamp = time.time()
                     if best_latency:
-                        response = f"{best_latency},{current_timestamp}"
+                        response = f"{best_latency},{current_timestamp},{available_videos}"
                     else:
                         response = "NO_DATA"
                 

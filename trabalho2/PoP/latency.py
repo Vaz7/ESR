@@ -6,11 +6,13 @@ class LatencyManager:
     def __init__(self):
         self.lock = threading.Lock()  # To ensure thread-safe access
         self.server_latencies = {}  # Dictionary to store latencies for each server
+        self.availableVideos=None
 
-    def update_latency(self, server_ip, latency):
+    def update_latency(self, server_ip, latency,availableVideos):
         """Update the latency for a given server."""
         with self.lock:
             self.server_latencies[server_ip] = latency
+            self.availableVideos=availableVideos
             print(f"Updated latency for {server_ip}: {latency:.2f} ms")
 
     def get_best_server(self):
@@ -19,7 +21,7 @@ class LatencyManager:
             if not self.server_latencies:
                 return None, None
             best_server = min(self.server_latencies, key=self.server_latencies.get)
-            return best_server, self.server_latencies[best_server]
+            return best_server, self.server_latencies[best_server],self.availableVideos
 
     def print_latencies(self):
         """Print the current latencies for all tracked servers."""
@@ -71,10 +73,7 @@ class LatencyHandler:
 
                 # Calculate latency
                 latency = (received_time - sent_time) * 1000  # Convert to milliseconds
-                self.latency_manager.update_latency(addr[0], latency)
-
-                # Print the video list for verification
-                print(f"Received video list from {addr[0]}: {additional_data}")
+                self.latency_manager.update_latency(addr[0], latency,additional_data)
 
                 # Close the connection after processing the data
                 client_socket.close()

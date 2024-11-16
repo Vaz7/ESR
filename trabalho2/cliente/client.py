@@ -3,7 +3,7 @@ import time
 import socket
 from latency import LatencyMonitor
 from stream_rcv import StreamReceiver
-
+from utils import get_and_choose_video
 class Client:
     def __init__(self, ip_list, port=13333, stream_port=12346):
         self.port = port
@@ -12,10 +12,10 @@ class Client:
         self.monitors = []  # List to keep track of monitor threads
         self.ip_list = ip_list
         self.current_stream_ip = None
-        self.available_videos = []  # List of available videos
-        self.video_selected = None  # Chosen video for streaming
-        self.first_video_info_received = False  # Track if video info has been received and processed
         self.lock = threading.Lock()
+        #Depois aqui tem de se mudar para ele tentar com todos se eles nao forem respondendo
+
+        self.wantedVideo = get_and_choose_video(ip_list[0],13335)
 
         # Initialize a single StreamReceiver to receive data on stream_port
         self.stream_receiver = StreamReceiver(self.stream_port)
@@ -34,10 +34,10 @@ class Client:
                 if num < 0 or num > 255:
                     return False
         return True
-
+    
     def start_monitoring(self):
         if not self.validateIpAddress():
-            raise ValueError("Invalid IP address in the list")
+            raise ValueError(f"Invalid IP address in the list")
 
         for ip in self.ip_list:
             monitor = LatencyMonitor(ip, 13335, self.latency_dict)
@@ -55,93 +55,64 @@ class Client:
     def manage_stream(self):
         """Periodically checks latency and switches to the best available stream."""
         while True:
-            time.sleep(5)  # Wait 5 seconds to check latency updates
+            time.sleep(5)  # Wait 3 seconds to check latency updates
             
             with self.lock:
-                # Find the IP with the lowest latency
+                # Find the IP with the highest latency
                 best_ip = min(self.latency_dict, key=self.latency_dict.get, default=None)
                 if best_ip is None:
                     continue
-
+                
                 best_latency = self.latency_dict[best_ip]
                 print(f"Best available latency: {best_latency} ms from {best_ip}")
 
-                # If we have a new stream IP or no current stream, process it
+                # Switch to the new stream if it's better than the current one
                 if self.current_stream_ip != best_ip:
-                    self.current_stream_ip = best_ip
-                    self.receive_latency_info(best_ip)
-                    if self.video_selected:
-                        self.send_start_stream(best_ip, self.video_selected)
+                    print(f"Switching to the stream from {best_ip}")
+                    self.switch_stream(best_ip)
 
-    def receive_latency_info(self, server_ip):
-        """Receive a timestamp message containing latency and optional video list from the server."""
-        try:
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-                sock.settimeout(5)  # Set a timeout for the connection
-                sock.connect((server_ip, self.port))  # Connect to the server's control port
-                
-                response = sock.recv(4096).decode()
-                if response:
-                    # Assume the response format is "TIMESTAMP,video1,video2,video3"
-                    parts = response.split(',', 1)  # Split only once to separate timestamp from video list
-                    if len(parts) > 1:
-                        # Parse the timestamp for latency (if needed)
-                        timestamp = float(parts[0])
-                        # Only process the video list once
-                        if not self.first_video_info_received:
-                            self.available_videos = parts[1].split(',')  # Extract video list
-                            print(f"Available videos from {server_ip}: {', '.join(self.available_videos)}")
-                            self.first_video_info_received = True  # Mark as processed
-                            self.prompt_video_choice()
-                    else:
-                        print(f"Received timestamp but no video list from {server_ip}.")
-        except ValueError:
-            print(f"Failed to parse timestamp or data from {server_ip}.")
-        except Exception as e:
-            print(f"Failed to receive latency info from {server_ip}. Error: {e}")
+    def switch_stream(self, new_ip):
+        """Stop the current stream and start a new one from the given IP."""
+        # Stop the current stream from the previous server and notify the server to stop
+        if self.current_stream_ip:
+            self.send_stop_stream(self.current_stream_ip)
 
-    def prompt_video_choice(self):
-        """Prompt the user to choose a video and store the selection."""
-        if not self.available_videos:
-            print("No available videos to display.")
+        # Change the target server IP in the existing StreamReceiver
+        self.current_stream_ip = new_ip
+        self.stream_receiver.set_target_ip(new_ip)  # Set the new server IP
+
+        # Send START_STREAM message to the new server
+        self.send_start_stream(new_ip)
+
+
+    def send_start_stream(self, server_ip):
+        """Send a START_STREAM message with the chosen video to the specified server via TCP."""
+        if not self.wantedVideo:
+            print("No video selected for streaming.")
             return
-
-        print("\nChoose a video to stream:")
-        for idx, video in enumerate(self.available_videos):
-            print(f"{idx + 1}: {video}")
-
-        try:
-            choice = int(input("Enter the number of the video you want to stream: "))
-            if 1 <= choice <= len(self.available_videos):
-                self.video_selected = self.available_videos[choice - 1]
-                print(f"Selected video: {self.video_selected}")
-            else:
-                print("Invalid choice. Please try again.")
-                self.first_video_info_received = False  # Allow retry if selection fails
-        except ValueError:
-            print("Invalid input. Please enter a number.")
-            self.first_video_info_received = False  # Allow retry if selection fails
-
-    def send_start_stream(self, server_ip, video_name):
-        """Send a START_STREAM message with the video name to the specified server via TCP."""
+    
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
                 sock.settimeout(5)  # Set a timeout for the connection
                 sock.connect((server_ip, self.port))  # Connect to the server's control port
-                message = f"START_STREAM {video_name}"
+                message = f"START_STREAM {self.wantedVideo}"
                 sock.sendall(message.encode())
-                print(f"Sent START_STREAM for {video_name} to {server_ip}:{self.port}")
+                print(f"Sent START_STREAM for {self.wantedVideo} to {server_ip}:{self.port}")
         except Exception as e:
-            print(f"Failed to send START_STREAM for {video_name} to {server_ip}. Error: {e}")
-
-    def send_stop_stream(self, server_ip, video_name):
-        """Send a STOP_STREAM message with the video name to the specified server via TCP."""
+            print(f"Failed to send START_STREAM for {self.wantedVideo} to {server_ip}. Error: {e}")
+    
+    def send_stop_stream(self, server_ip):
+        """Send a STOP_STREAM message with the chosen video to the specified server via TCP."""
+        if not self.wantedVideo:
+            print("No video selected for stopping.")
+            return
+    
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
                 sock.settimeout(5)  # Set a timeout for the connection
                 sock.connect((server_ip, self.port))  # Connect to the server's control port
-                message = f"STOP_STREAM {video_name}"
+                message = f"STOP_STREAM {self.wantedVideo}"
                 sock.sendall(message.encode())
-                print(f"Sent STOP_STREAM for {video_name} to {server_ip}:{self.port}")
+                print(f"Sent STOP_STREAM for {self.wantedVideo} to {server_ip}:{self.port}")
         except Exception as e:
-            print(f"Failed to send STOP_STREAM for {video_name} to {server_ip}. Error: {e}")
+            print(f"Failed to send STOP_STREAM for {self.wantedVideo} to {server_ip}. Error: {e}")
