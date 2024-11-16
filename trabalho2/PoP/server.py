@@ -11,7 +11,6 @@ class OverlayNode:
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.server_socket.bind(("0.0.0.0", streaming_port))
         
-
         # Shared state for managing streaming
         self.is_stream_active = False
         self.current_udp_receiver = None  # Node to which we are sending the stream
@@ -20,10 +19,10 @@ class OverlayNode:
 
         # Initialize latency and stream managers
         self.latency_manager = LatencyManager()
-        self.latency_handler = LatencyHandler(13334,self.latency_manager)
+        self.latency_handler = LatencyHandler(13334, self.latency_manager)
 
     def start(self):
-        """Start all overlay node operations in separate threads."""
+        """Start all PoP node operations in separate threads."""
         print(f"PoP node listening on UDP port {self.streaming_port}")
         threading.Thread(target=self.latency_handler.start).start()
         threading.Thread(target=self.periodic_best_node_update).start()
@@ -49,20 +48,15 @@ class OverlayNode:
                     continue
 
                 with self.lock:
-                    if data == "START_STREAM":
-                        self.is_stream_active = True
-                        self.current_udp_receiver = addr[0]  # Set the UDP receiver to the sender of START_STREAM
-                        self.current_udp_source, _ = self.latency_manager.get_best_server()  # Determine the best source
-                        print(f"Received START_STREAM from {addr}. UDP receiver set to {self.current_udp_receiver}. Requesting stream from {self.current_udp_source}")
-                        self.send_control_command(self.current_udp_source, "START_STREAM")
-                    elif data == "STOP_STREAM":
+                    print(f"Received '{data}' from {addr}")
+                    if data.startswith("START_STREAM") or data.startswith("STOP_STREAM"):
+                        # Mark the stream as active/inactive based on the command
+                        self.is_stream_active = data.startswith("START_STREAM")
+                        self.current_udp_receiver = addr[0] if self.is_stream_active else None
+                        self.current_udp_source = self.latency_manager.get_best_server()[0] if self.is_stream_active else None
                         if self.is_stream_active:
-                            print(f"Received STOP_STREAM from {addr}. Stopping stream to {self.current_udp_receiver}")
-                            if self.current_udp_source:
-                                self.send_control_command(self.current_udp_source, "STOP_STREAM")
-                        self.is_stream_active = False
-                        self.current_udp_receiver = None
-                        self.current_udp_source = None
+                            print(f"Requesting stream from {self.current_udp_source}")
+                        self.send_control_command(self.current_udp_source, data)
 
                 client_socket.close()
             except Exception as e:
@@ -80,7 +74,7 @@ class OverlayNode:
                 data, client_addr = latency_socket.recvfrom(1024)
                 if data.decode() == "LATENCY_REQUEST":
                     # Respond with the latency to the best server
-                    _,best_latency = self.latency_manager.get_best_server()
+                    _, best_latency = self.latency_manager.get_best_server()
                     current_timestamp = time.time()
                     if best_latency:
                         response = f"{best_latency},{current_timestamp}"
@@ -92,7 +86,6 @@ class OverlayNode:
                     
             except Exception as e:
                 print(f"Error while handling latency request: {e}")
-
 
     def retransmit_stream(self):
         """Retransmit UDP stream chunks to the current UDP receiver."""
@@ -130,7 +123,6 @@ class OverlayNode:
                         # Request stream from the new source
                         self.send_control_command(new_udp_source, "START_STREAM")
 
-
     def send_control_command(self, target_ip, command):
         """Send a control command to a specified node."""
         try:
@@ -142,27 +134,3 @@ class OverlayNode:
         except Exception as e:
             print(f"Failed to send '{command}' to {target_ip}. Error: {e}")
 
-    def get_neighbours(self, bootstrapper_ip, port=12222, retry_interval=5, max_retries=10):
-        """Retrieve a list of neighbor nodes."""
-        try:
-            client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            client_socket.connect((bootstrapper_ip, port))
-            client_socket.send("Hello, Server!".encode())
-            response = client_socket.recv(4096).decode()
-
-            if response == "ERROR":
-                print("No neighbours found. Exiting.")
-                client_socket.close()
-                sys.exit(1)
-
-            ip_list = [ip.strip() for ip in response.split(',')]
-            client_socket.close()
-            return ip_list
-
-        except Exception as e:
-            print(f"Failed to connect to {bootstrapper_ip} on port {port}. Error: {e}")
-            sys.exit(1)
-
-# Usage:
-# node = OverlayNode(streaming_port=12345, bootstrapper_ip="192.168.1.1")
-# node.start()

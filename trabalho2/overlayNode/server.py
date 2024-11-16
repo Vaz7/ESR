@@ -50,17 +50,16 @@ class OverlayNode:
                     continue
 
                 with self.lock:
-                    if data == "START_STREAM":
+                    if data.startswith("START_STREAM"):
                         self.is_stream_active = True
-                        self.current_udp_receiver = addr[0]  # Set the UDP receiver to the sender of START_STREAM
-                        self.current_udp_source = self.latency_manager.get_best_server()  # Determine the best source
-                        print(f"Received START_STREAM from {addr}. UDP receiver set to {self.current_udp_receiver}. Requesting stream from {self.current_udp_source}")
-                        self.send_control_command(self.current_udp_source, "START_STREAM")
-                    elif data == "STOP_STREAM":
-                        if self.is_stream_active:
-                            print(f"Received STOP_STREAM from {addr}. Stopping stream to {self.current_udp_receiver}")
-                            if self.current_udp_source:
-                                self.send_control_command(self.current_udp_source, "STOP_STREAM")
+                        self.current_udp_receiver = addr[0]  # Set the receiver to the sender of START_STREAM
+                        self.current_udp_source = self.latency_manager.get_best_server()
+                        print(f"Received '{data}' from {addr}. Requesting stream from {self.current_udp_source}.")
+                        self.send_control_command(self.current_udp_source, data)
+                    elif data.startswith("STOP_STREAM"):
+                        print(f"Received '{data}' from {addr}. Stopping stream to {self.current_udp_receiver}.")
+                        if self.is_stream_active and self.current_udp_source:
+                            self.send_control_command(self.current_udp_source, data)
                         self.is_stream_active = False
                         self.current_udp_receiver = None
                         self.current_udp_source = None
@@ -138,6 +137,3 @@ class OverlayNode:
             print(f"Failed to connect to {bootstrapper_ip} on port {port}. Error: {e}")
             sys.exit(1)
 
-# Usage:
-# node = OverlayNode(streaming_port=12345, bootstrapper_ip="192.168.1.1")
-# node.start()

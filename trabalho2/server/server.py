@@ -1,38 +1,34 @@
 import socket
 import threading
 import time
+import sys
 from latency import LatencyHandler
 from stream import VideoStreamer
-import sys
 
 class Server:
-    def __init__(self, video_path, bootstrapper_ip, streaming_port=12346, control_port=13333):
-
-        self.video_path = video_path
+    def __init__(self, video_paths, bootstrapper_ip, streaming_port=12346, control_port=13333):
+        self.video_paths = {f"video_{i+1}": path for i, path in enumerate(video_paths)}
         self.streaming_port = streaming_port
         self.control_port = control_port
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.server_socket.bind(("0.0.0.0", streaming_port))
-        
-        # Initialize the VideoStreamer for handling streaming requests
-        self.video_streamer = VideoStreamer(video_path, streaming_port)
+
+        # Initialize the VideoStreamer for each video
+        self.video_streamers = {name: VideoStreamer(path, streaming_port) for name, path in self.video_paths.items()}
 
         self.vizinhos = self.getNeighbours(bootstrapper_ip, retry_interval=5, max_retries=10)
         print(f"Neighbours are: {self.vizinhos}")
 
-        latencyHandle = LatencyHandler(13334,self.vizinhos)
+        self.latencyHandler = LatencyHandler(13334, self.vizinhos)
 
-        self.stream_active_clients = set()
+        self.stream_active_clients = {}
         self.lock = threading.Lock()
 
-        latencyHandle.start()
-
-
+        self.latencyHandler.start()
 
     def start(self):
-        print(f"Server listening on UDP port {12346}")
+        print(f"Server listening on UDP port {self.streaming_port}")
         threading.Thread(target=self.receive_control_data).start()
-
 
     def receive_control_data(self):
         """Listen for control data via TCP."""
@@ -52,33 +48,34 @@ class Server:
                     continue
 
                 with self.lock:
-                    if data == "START_STREAM" and addr[0] in self.vizinhos:
-                        self.stream_active_clients.add(addr)
-                        print(f"Received START_STREAM from {addr}. Added to active clients.")
-                        self.start_stream_for_client(addr)
-                    elif data == "STOP_STREAM" and addr in self.stream_active_clients:
-                        self.stream_active_clients.remove(addr)
-                        print(f"Received STOP_STREAM from {addr}. Removed from active clients.")
-                        self.stop_stream_for_client(addr)
+                    command_parts = data.split()
+                    if command_parts[0] == "START_STREAM" and len(command_parts) == 2:
+                        video_name = command_parts[1]
+                        if addr[0] in self.vizinhos and video_name in self.video_streamers:
+                            self.stream_active_clients[addr] = video_name
+                            print(f"Received START_STREAM for {video_name} from {addr}. Added to active clients.")
+                            self.start_stream_for_client(addr, video_name)
+                        else:
+                            print(f"Invalid video name or client {addr[0]} not in neighbours.")
+                    elif command_parts[0] == "STOP_STREAM" and addr in self.stream_active_clients:
+                        video_name = self.stream_active_clients.pop(addr)
+                        print(f"Received STOP_STREAM for {video_name} from {addr}. Removed from active clients.")
+                        self.stop_stream_for_client(addr, video_name)
 
                 client_socket.close()
             except Exception as e:
                 print(f"Error while receiving control data from {addr}: {e}")
                 client_socket.close()
-                
 
-    def start_stream_for_client(self, client_addr):
-        """Start streaming to the specified client."""
-        # Add the client to the video streamer
-        self.video_streamer.add_client(client_addr)
-        print(f"Streaming started for client {client_addr}")
-        
+    def start_stream_for_client(self, client_addr, video_name):
+        """Start streaming a specific video to the specified client."""
+        self.video_streamers[video_name].add_client(client_addr)
+        print(f"Streaming {video_name} started for client {client_addr}")
 
-    def stop_stream_for_client(self, client_addr):
-        """Stop streaming to the specified client."""
-        self.video_streamer.remove_client(client_addr)
-        print(f"Streaming stopped for client {client_addr}")
-
+    def stop_stream_for_client(self, client_addr, video_name):
+        """Stop streaming a specific video to the specified client."""
+        self.video_streamers[video_name].remove_client(client_addr)
+        print(f"Streaming {video_name} stopped for client {client_addr}")
 
     def getNeighbours(self, bootstrapper_IP, port=12222, retry_interval=5, max_retries=None):
         retries = 0
@@ -93,7 +90,6 @@ class Server:
                 response = client_socket.recv(4096)
                 response_decoded = response.decode()
 
-                # If the node has no neighbors, print a message and retry after a while
                 if response_decoded == "ERROR":
                     print("No neighbours exist. Retrying after a while...")
                     client_socket.close()
