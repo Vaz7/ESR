@@ -81,25 +81,29 @@ class LatencyHandler:
             if ip == original_sender:
                 print(f"Skipping sending timestamp to {ip} (original sender).")
                 continue
-
-            try:
-                # Create a TCP connection to each neighbor
-                client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                client_socket.settimeout(5)  # Set a 5-second timeout for the connection attempt
-                client_socket.connect((ip, self.port))  # Assume the same port for neighbors
-
-                # Send the timestamp
-                client_socket.send(timestamp.encode())
-                print(f"Forwarded timestamp to {ip}")
-
-                # Close the connection
-                client_socket.close()
-
-            except socket.timeout:
-                print(f"Connection to {ip} timed out after 5 seconds.")
-            except Exception as e:
-                print(f"Failed to forward message to {ip}. Error: {e}")
-
-            # Adding a slight delay between connections to avoid overwhelming the network
-            time.sleep(1)
-
+            
+            # Create a separate thread for each forwarding operation
+            threading.Thread(target=self._forward_to_single_neighbour, args=(ip, timestamp)).start()
+    
+    def _forward_to_single_neighbour(self, ip, timestamp):
+        """Helper function to forward the timestamp to a single neighbor."""
+        try:
+            client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            client_socket.settimeout(5)  # Set a 5-second timeout for the connection attempt
+            client_socket.connect((ip, self.port))  # Assume the same port for neighbors
+    
+            # Send the timestamp
+            client_socket.send(timestamp.encode())
+            print(f"Forwarded timestamp to {ip}")
+    
+            # Close the connection
+            client_socket.close()
+    
+        except socket.timeout:
+            print(f"Connection to {ip} timed out after 5 seconds.")
+        except Exception as e:
+            print(f"Failed to forward message to {ip}. Error: {e}")
+    
+        # Adding a slight delay between connections to avoid overwhelming the network
+        time.sleep(1)
+    
