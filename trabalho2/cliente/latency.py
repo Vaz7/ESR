@@ -79,7 +79,8 @@ class LatencyMonitor:
                                 print(f"Unexpected data format from {self.ip}: {received_data.decode()}")
                                 continue
                             
-                            latency_sent, sent_time = parts
+                            latency_sent = parts[0] 
+                            sent_time = parts[1]
                             sent_time = float(sent_time)
     
                             latency = (rcv_time - sent_time) * 1000  # Convert to milliseconds

@@ -114,7 +114,7 @@ class OverlayNode:
             time.sleep(10)  # Adjust interval as needed
             with self.lock:
                 if self.is_stream_active:
-                    new_udp_source, _ = self.latency_manager.get_best_server()
+                    new_udp_source, _ , _= self.latency_manager.get_best_server()
                     if new_udp_source and new_udp_source != self.current_udp_source:
                         print(f"Better UDP source found: {new_udp_source}. Switching stream source.")
                         # Stop the stream from the current source

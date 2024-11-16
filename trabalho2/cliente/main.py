@@ -17,7 +17,6 @@ def main():
     if ip_list:
         # Start the client
         client = Client(ip_list)
-        client.start_monitoring()
     else:
         print("No IP addresses provided.")
         sys.exit(1)
