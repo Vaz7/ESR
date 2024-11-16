@@ -34,12 +34,12 @@ class LatencyHandler:
         self.latency_manager = latency_manager  # Reference to the LatencyManager instance
 
     def start(self):
-        """Start the thread to receive and forward timestamps."""
+        """Start the thread to receive timestamps."""
         self.latency_thread = threading.Thread(target=self.receive_timestamps)
         self.latency_thread.start()
 
     def receive_timestamps(self):
-        """Listen for incoming timestamps from multiple servers."""
+        """Listen for incoming timestamp messages containing latency and additional data from multiple servers."""
         server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         server_socket.bind(('0.0.0.0', self.port))
         server_socket.listen(5)
@@ -51,22 +51,37 @@ class LatencyHandler:
             print(f"Connection established with {addr}")
 
             try:
-                # Receive the timestamp from the server
+                # Receive the combined timestamp and additional data from the server
                 data = client_socket.recv(1024).decode()
                 if not data:
                     client_socket.close()
                     continue
 
+                # Parse the incoming data (format: "TIMESTAMP,video1,video2,...")
+                data_parts = data.split(',', 1)  # Split only once to separate timestamp from video list
+                if len(data_parts) < 2:
+                    print(f"Invalid data format received from {addr}: {data}")
+                    client_socket.close()
+                    continue
+
+                # Extract and parse timestamp and video list
+                sent_time = float(data_parts[0])
+                additional_data = data_parts[1]  # This part contains the video list
                 received_time = time.time()
-                sent_time = float(data)
 
                 # Calculate latency
                 latency = (received_time - sent_time) * 1000  # Convert to milliseconds
                 self.latency_manager.update_latency(addr[0], latency)
 
-                # Close the connection after receiving the data
+                # Print the video list for verification
+                print(f"Received video list from {addr[0]}: {additional_data}")
+
+                # Close the connection after processing the data
                 client_socket.close()
 
+            except ValueError:
+                print(f"Failed to parse timestamp from {addr}. Data received: {data}")
+                client_socket.close()
             except Exception as e:
                 print(f"Error while receiving or processing timestamp from {addr}: {e}")
                 client_socket.close()

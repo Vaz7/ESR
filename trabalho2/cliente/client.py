@@ -35,7 +35,7 @@ class Client:
     
     def start_monitoring(self):
         if not self.validateIpAddress():
-            raise ValueError("Invalid IP address in the list")
+            raise ValueError(f"Invalid IP address in the list")
 
         for ip in self.ip_list:
             monitor = LatencyMonitor(ip, 13335, self.latency_dict)
@@ -67,23 +67,27 @@ class Client:
                 # If we have a new stream IP or no current stream, prompt user to choose a video
                 if self.current_stream_ip != best_ip:
                     self.current_stream_ip = best_ip
-                    self.get_available_videos(best_ip)
+                    self.receive_timestamp_and_videos(best_ip)
                     self.prompt_video_choice(best_ip)
 
-    def get_available_videos(self, server_ip):
-        """Request the list of available videos from the server."""
+    def receive_timestamp_and_videos(self, server_ip):
+        """Receive a timestamp message containing the available video list from the server."""
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
                 sock.settimeout(5)  # Set a timeout for the connection
                 sock.connect((server_ip, self.port))  # Connect to the server's control port
-                sock.sendall("GET_VIDEOS".encode())
-
+                
                 response = sock.recv(4096).decode()
                 if response:
-                    self.available_videos = response.split(',')
-                    print(f"Available videos from {server_ip}: {', '.join(self.available_videos)}")
+                    # Assume the response format is "TIMESTAMP,video1,video2,video3"
+                    parts = response.split(',', 1)  # Split only once to separate timestamp from video list
+                    if len(parts) > 1:
+                        self.available_videos = parts[1].split(',')  # Extract video list
+                        print(f"Available videos from {server_ip}: {', '.join(self.available_videos)}")
+                    else:
+                        print(f"Received timestamp but no video list from {server_ip}.")
         except Exception as e:
-            print(f"Failed to get available videos from {server_ip}. Error: {e}")
+            print(f"Failed to receive timestamp and video list from {server_ip}. Error: {e}")
 
     def prompt_video_choice(self, server_ip):
         """Prompt the user to choose a video and handle starting the stream."""
@@ -118,14 +122,14 @@ class Client:
         except Exception as e:
             print(f"Failed to send START_STREAM for {video_name} to {server_ip}. Error: {e}")
 
-    def send_stop_stream(self, server_ip):
-        """Send a STOP_STREAM message to the specified server via TCP."""
+    def send_stop_stream(self, server_ip, video_name):
+        """Send a STOP_STREAM message with the video name to the specified server via TCP."""
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
                 sock.settimeout(5)  # Set a timeout for the connection
                 sock.connect((server_ip, self.port))  # Connect to the server's control port
-                message = "STOP_STREAM"
+                message = f"STOP_STREAM {video_name}"
                 sock.sendall(message.encode())
-                print(f"Sent STOP_STREAM to {server_ip}:{self.port}")
+                print(f"Sent STOP_STREAM for {video_name} to {server_ip}:{self.port}")
         except Exception as e:
-            print(f"Failed to send STOP_STREAM to {server_ip}. Error: {e}")
+            print(f"Failed to send STOP_STREAM for {video_name} to {server_ip}. Error: {e}")

@@ -3,12 +3,13 @@ import threading
 import socket
 
 class LatencyHandler:
-    def __init__(self,port,vizinhos):
+    def __init__(self, port, vizinhos, available_videos):
         self.port = port
         self.vizinhos = vizinhos
+        # Initialize with a list of available videos
+        self.available_videos = available_videos if available_videos else []
 
     def start(self):
-
         self.latency_thread = threading.Thread(target=self.sendLatencyStarter)
         self.latency_thread.start()
 
@@ -21,10 +22,14 @@ class LatencyHandler:
                     client_socket.settimeout(5)  # Set a 5-second timeout for the connection attempt
                     client_socket.connect((ip, self.port))
     
-                    # Send a timestamped message to initiate latency calculation
+                    # Prepare the message with the timestamp and available videos
                     timestamp = str(time.time())
-                    client_socket.send(timestamp.encode())
-                    print(f"Sent latency initiation message to {ip}")
+                    video_list_str = ",".join(self.available_videos)
+                    message = f"{timestamp},{video_list_str}"  # Format: "TIMESTAMP,video1,video2,..."
+    
+                    # Send the combined message
+                    client_socket.send(message.encode())
+                    print(f"Sent latency initiation message with video list to {ip}: {message}")
     
                     # Close the connection
                     client_socket.close()
@@ -36,4 +41,4 @@ class LatencyHandler:
     
             # Wait for 10 seconds before sending the next round of messages
             time.sleep(10)
-    
+

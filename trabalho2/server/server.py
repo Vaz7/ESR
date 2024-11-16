@@ -19,7 +19,7 @@ class Server:
         self.vizinhos = self.getNeighbours(bootstrapper_ip, retry_interval=5, max_retries=10)
         print(f"Neighbours are: {self.vizinhos}")
 
-        self.latencyHandler = LatencyHandler(13334, self.vizinhos)
+        self.latencyHandler = LatencyHandler(13334, self.vizinhos,self.video_paths)
 
         self.stream_active_clients = {}
         self.lock = threading.Lock()

@@ -40,7 +40,7 @@ class LatencyHandler:
         self.latency_thread.start()
 
     def receive_and_forward_timestamps(self):
-        """Listen for incoming timestamps from multiple servers."""
+        """Listen for incoming timestamp messages containing latency and additional data from multiple servers."""
         server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         server_socket.bind(('0.0.0.0', self.port))
         server_socket.listen(5)
@@ -52,30 +52,40 @@ class LatencyHandler:
             print(f"Connection established with {addr}")
 
             try:
-                # Receive the timestamp from the server
+                # Receive the combined timestamp and additional data from the server
                 data = client_socket.recv(1024).decode()
                 if not data:
                     client_socket.close()
                     continue
                 
+                # Parse the incoming data (format: "TIMESTAMP,video1,video2,...")
+                data_parts = data.split(',', 1)  # Split only once to separate timestamp from video list
+                if len(data_parts) < 2:
+                    print(f"Invalid data format received from {addr}: {data}")
+                    client_socket.close()
+                    continue
+
+                # Extract and parse timestamp and video list
+                sent_time = float(data_parts[0])
                 received_time = time.time()
-                sent_time = float(data)
+                additional_data = data_parts[1]  # This part contains the video list
 
                 # Calculate latency
                 latency = (received_time - sent_time) * 1000  # Convert to milliseconds
                 self.latency_manager.update_latency(addr[0], latency)
 
-                # Forward the received timestamp to all neighbors except the sender
+                # Forward the received data (timestamp + video list) to all neighbors except the sender
                 self.forward_timestamp_to_neighbours(data, addr[0])
-                # Close the connection after receiving the data
+
+                # Close the connection after receiving and forwarding the data
                 client_socket.close()
 
             except Exception as e:
                 print(f"Error while receiving or processing timestamp from {addr}: {e}")
                 client_socket.close()
 
-    def forward_timestamp_to_neighbours(self, timestamp, original_sender):
-        """Forward the received timestamp to all neighbors except the original sender."""
+    def forward_timestamp_to_neighbours(self, data, original_sender):
+        """Forward the received timestamp and additional data to all neighbors except the original sender."""
         for ip in self.vizinhos:
             if ip == original_sender:
                 print(f"Skipping sending timestamp to {ip} (original sender).")
@@ -90,9 +100,9 @@ class LatencyHandler:
                     client_socket.connect((ip, self.port))
                     self.connections[ip] = client_socket
 
-                # Send the timestamp through the existing connection
-                self.connections[ip].send(timestamp.encode())
-                print(f"Forwarded timestamp to {ip}")
+                # Send the timestamp and additional data through the existing connection
+                self.connections[ip].send(data.encode())
+                print(f"Forwarded timestamp and video list to {ip}")
 
             except socket.timeout:
                 print(f"Connection to {ip} timed out after 5 seconds.")
@@ -105,5 +115,3 @@ class LatencyHandler:
 
             # Optional: Implement a slight delay between sends, if needed.
             # time.sleep(1)
-
-
