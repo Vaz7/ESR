@@ -84,45 +84,45 @@ class LatencyHandler:
                 print(f"Error while receiving or processing timestamp from {addr}: {e}")
                 client_socket.close()
 
-def forward_timestamp_to_neighbours(self, data, original_sender):
-    """Forward the received timestamp and additional data to all neighbors except the original sender."""
-    for ip in self.vizinhos:
-        if ip == original_sender:
-            print(f"Skipping sending timestamp to {ip} (original sender).")
-            continue
-
-        try:
-            # Check if the connection is already in the dictionary
-            if ip not in self.connections or self.connections[ip]._closed:
-                # Create and store a new TCP connection if not already open or closed
-                client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                client_socket.settimeout(5)  # Set a 5-second timeout for the connection attempt
-                client_socket.connect((ip, self.port))
-                self.connections[ip] = client_socket
-
-            # Send the timestamp and additional data through the existing connection
-            self.connections[ip].send(data.encode())
-            print(f"Forwarded timestamp and video list to {ip}")
-
-        except (socket.timeout, BrokenPipeError):
-            print(f"Connection to {ip} timed out or broken pipe detected. Reconnecting...")
-            if ip in self.connections:
-                self.connections[ip].close()
-                del self.connections[ip]
-            # Attempt to reconnect and resend
+    def forward_timestamp_to_neighbours(self, data, original_sender):
+        """Forward the received timestamp and additional data to all neighbors except the original sender."""
+        for ip in self.vizinhos:
+            if ip == original_sender:
+                print(f"Skipping sending timestamp to {ip} (original sender).")
+                continue
+            
             try:
-                client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                client_socket.settimeout(5)
-                client_socket.connect((ip, self.port))
-                self.connections[ip] = client_socket
+                # Check if the connection is already in the dictionary
+                if ip not in self.connections or self.connections[ip]._closed:
+                    # Create and store a new TCP connection if not already open or closed
+                    client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    client_socket.settimeout(5)  # Set a 5-second timeout for the connection attempt
+                    client_socket.connect((ip, self.port))
+                    self.connections[ip] = client_socket
+    
+                # Send the timestamp and additional data through the existing connection
                 self.connections[ip].send(data.encode())
-                print(f"Reconnected and forwarded timestamp to {ip}")
+                print(f"Forwarded timestamp and video list to {ip}")
+    
+            except (socket.timeout, BrokenPipeError):
+                print(f"Connection to {ip} timed out or broken pipe detected. Reconnecting...")
+                if ip in self.connections:
+                    self.connections[ip].close()
+                    del self.connections[ip]
+                # Attempt to reconnect and resend
+                try:
+                    client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    client_socket.settimeout(5)
+                    client_socket.connect((ip, self.port))
+                    self.connections[ip] = client_socket
+                    self.connections[ip].send(data.encode())
+                    print(f"Reconnected and forwarded timestamp to {ip}")
+                except Exception as e:
+                    print(f"Failed to re-establish connection to {ip}. Error: {e}")
+    
             except Exception as e:
-                print(f"Failed to re-establish connection to {ip}. Error: {e}")
-
-        except Exception as e:
-            print(f"Failed to forward message to {ip}. Error: {e}")
-            if ip in self.connections:
-                self.connections[ip].close()
-                del self.connections[ip]
-
+                print(f"Failed to forward message to {ip}. Error: {e}")
+                if ip in self.connections:
+                    self.connections[ip].close()
+                    del self.connections[ip]
+    

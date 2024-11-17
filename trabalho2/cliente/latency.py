@@ -11,44 +11,6 @@ class LatencyMonitor:
         self.repetitions = repetitions
         self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.client_socket.settimeout(2)  # Set a timeout for packet responses
-
-    def get_video_names(self):
-        """Send a single latency request and display available video names to the user."""
-        try:
-            # Send a single latency request
-            self.client_socket.sendto("LATENCY_REQUEST".encode(), (self.ip, self.port))
-            
-            # Wait for a response within the timeout period
-            received_data, _ = self.client_socket.recvfrom(self.data_size)
-            if received_data.decode() == "NO_DATA":
-                print(f"No video data available for {self.ip}.")
-            else:
-                parts = received_data.decode().split(",")
-                if len(parts) < 3:
-                    print(f"Unexpected data format from {self.ip}: {received_data.decode()}")
-                    return
-
-                # Extract available video names from parts[2] onward
-                available_videos = parts[2:]
-                print("\nAvailable videos:")
-                for idx, video in enumerate(available_videos):
-                    print(f"{idx + 1}: {video}")
-
-                # Prompt the user to choose a video
-                try:
-                    choice = int(input("\nEnter the number of the video you want to stream: "))
-                    if 1 <= choice <= len(available_videos):
-                        self.chosenVideo = available_videos[choice - 1]
-                        print(f"Selected video: {self.chosenVideo}")
-                    else:
-                        print("Invalid choice. Please try again.")
-                except ValueError:
-                    print("Invalid input. Please enter a number.")
-        
-        except socket.timeout:
-            print(f"No response from {self.ip} within the timeout period.")
-        except Exception as e:
-            print(f"Error during video names retrieval: {e}")
             
     def measure_latency(self):
         # Set the socket timeout to 5 seconds to wait for a response
@@ -73,6 +35,7 @@ class LatencyMonitor:
                         if received_data.decode() == "NO_DATA":
                             print(f"No latency data available for {self.ip}.")
                         else:
+                            print(f"rcvd_data: {received_data}")
                             parts = received_data.decode().split(",")
                             # porque as mensagens vao sempre conter pelo menos timestamp,latencia,video1....
                             if len(parts) <3:

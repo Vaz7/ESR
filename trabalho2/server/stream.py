@@ -85,23 +85,28 @@ class VideoStreamer:
         frame_size = len(frame_data)
         packet_id = 0
         offset = 0
-
+    
+        # Ensure video_name is a string and encode it
+        if not isinstance(self.video_name, str):
+            self.video_name = str(self.video_name)
+    
         # Encode the video name as a fixed-size identifier (e.g., 16 bytes, padded with spaces if needed)
         video_id = self.video_name.encode('utf-8')[:16].ljust(16)
         
         # Override the port in client_addr with 12346
         target_addr = (client_addr[0], 12346)
-
+    
         while offset < frame_size:
             chunk = frame_data[offset:offset + self.max_packet_size - 24]  # Adjust for 16-byte video ID and 8-byte header
             chunk_size = len(chunk)
             offset += chunk_size
-
+    
             # Pack the video ID, packet ID, and frame size into the header
             packet_header = struct.pack('>16sHI', video_id, packet_id, frame_size)
             self.server_socket.sendto(packet_header + chunk, target_addr)
-
+    
             packet_id += 1
+
 
     def stop_stream(self, client_addr):
         """Stop streaming to the specified client."""

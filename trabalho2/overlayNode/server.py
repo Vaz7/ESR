@@ -3,7 +3,6 @@ import threading
 import time
 import sys
 from latency import LatencyManager, LatencyHandler
-import struct
 
 class OverlayNode:
     def __init__(self, streaming_port, bootstrapper_ip, control_port=13333):

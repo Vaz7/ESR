@@ -4,6 +4,7 @@ import socket
 from latency import LatencyMonitor
 from stream_rcv import StreamReceiver
 from utils import get_and_choose_video
+
 class Client:
     def __init__(self, ip_list, port=13333, stream_port=12346):
         self.port = port

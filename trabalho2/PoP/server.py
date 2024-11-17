@@ -1,33 +1,31 @@
 import socket
 import threading
 import time
-import sys
 from latency import LatencyManager, LatencyHandler
 
 class OverlayNode:
-    def __init__(self, streaming_port, bootstrapper_ip, control_port=13333):
+    def __init__(self, streaming_port, control_port=13333, timestamp_port=13334):
         self.streaming_port = streaming_port
         self.control_port = control_port
+        self.timestamp_port = timestamp_port
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.server_socket.bind(("0.0.0.0", streaming_port))
-
-        self.neighbours = self.get_neighbours(bootstrapper_ip, retry_interval=5, max_retries=10)
-        print(f"Neighbours are: {self.neighbours}")
-
+        
         # Shared state for managing streaming and client requests
         self.video_client_map = {}  # Maps video names to sets of client IPs
         self.lock = threading.Lock()
 
-        # Initialize latency and stream managers
+        # Initialize latency manager and handler for timestamp data
         self.latency_manager = LatencyManager()
-        self.latency_handler = LatencyHandler(13334, self.latency_manager)
+        self.latency_handler = LatencyHandler(self.timestamp_port, self.latency_manager)
 
     def start(self):
         """Start all overlay node operations in separate threads."""
         print(f"Overlay node listening on UDP port {self.streaming_port}")
-        threading.Thread(target=self.latency_handler.start).start()
-        threading.Thread(target=self.receive_control_data).start()
-        threading.Thread(target=self.retransmit_stream).start()
+        threading.Thread(target=self.latency_handler.start).start()  # Listen for incoming timestamp data
+        threading.Thread(target=self.receive_control_data).start()  # Handle control data from clients
+        threading.Thread(target=self.retransmit_stream).start()  # Retransmit video streams
+        threading.Thread(target=self.receive_client_latency_request).start()  # Handle client latency requests
 
     def receive_control_data(self):
         """Listen for incoming TCP control commands from clients."""
@@ -72,7 +70,7 @@ class OverlayNode:
             print(f"Added client {client_ip} to video {video_name}.")
 
             if len(self.video_client_map[video_name]) == 1:
-                # First client requesting this video, send START_STREAM command
+                # First client requesting this video, send START_STREAM command upstream
                 best_server_ip = self.latency_manager.get_best_server()[0]
                 if best_server_ip:
                     self.send_control_command(best_server_ip, f"START_STREAM {video_name}")
@@ -84,7 +82,7 @@ class OverlayNode:
             print(f"Removed client {client_ip} from video {video_name}.")
 
             if len(self.video_client_map[video_name]) == 0:
-                # No more clients requesting this video, send STOP_STREAM command
+                # No more clients requesting this video, send STOP_STREAM command upstream
                 best_server_ip = self.latency_manager.get_best_server()[0]
                 if best_server_ip:
                     self.send_control_command(best_server_ip, f"STOP_STREAM {video_name}")
@@ -127,23 +125,26 @@ class OverlayNode:
         except Exception as e:
             print(f"Failed to send '{command}' to {target_ip}. Error: {e}")
 
-    def get_neighbours(self, bootstrapper_ip, port=12222, retry_interval=5, max_retries=10):
-        """Retrieve a list of neighbor nodes."""
-        try:
-            client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            client_socket.connect((bootstrapper_ip, port))
-            client_socket.send("Hello, Server!".encode())
-            response = client_socket.recv(4096).decode()
+    def receive_client_latency_request(self):
+        """Listen for incoming latency requests from clients."""
+        latency_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        latency_socket.bind(("0.0.0.0", 13335))
+        print(f"Overlay node listening for latency requests on UDP port {13335}...")
 
-            if response == "ERROR":
-                print("No neighbours found. Exiting.")
-                client_socket.close()
-                sys.exit(1)
+        while True:
+            try:
+                data, client_addr = latency_socket.recvfrom(1024)
+                if data.decode() == "LATENCY_REQUEST":
+                    # Respond with the latency and available videos from the best server
+                    _, best_latency, available_videos = self.latency_manager.get_best_server()
+                    current_timestamp = time.time()
+                    if best_latency:
+                        response = f"{best_latency},{current_timestamp},{available_videos}"
+                    else:
+                        response = "NO_DATA"
 
-            ip_list = [ip.strip() for ip in response.split(',')]
-            client_socket.close()
-            return ip_list
+                    latency_socket.sendto(response.encode(), client_addr)
+                    print(f"Sent latency data to {client_addr}: {response}")
 
-        except Exception as e:
-            print(f"Failed to connect to {bootstrapper_ip} on port {port}. Error: {e}")
-            sys.exit(1)
+            except Exception as e:
+                print(f"Error while handling latency request: {e}")
