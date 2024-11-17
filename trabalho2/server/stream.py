@@ -5,8 +5,9 @@ import threading
 import time
 
 class VideoStreamer:
-    def __init__(self, video_path, port=12346, max_packet_size=60000):
+    def __init__(self, video_path, video_name, port=12346, max_packet_size=60000):
         self.video_path = video_path
+        self.video_name = video_name  # Video name used as an identifier
         self.port = port
         self.max_packet_size = max_packet_size
         self.clients = set()
@@ -85,16 +86,19 @@ class VideoStreamer:
         packet_id = 0
         offset = 0
 
+        # Encode the video name as a fixed-size identifier (e.g., 16 bytes, padded with spaces if needed)
+        video_id = self.video_name.encode('utf-8')[:16].ljust(16)
+        
         # Override the port in client_addr with 12346
         target_addr = (client_addr[0], 12346)
 
         while offset < frame_size:
-            chunk = frame_data[offset:offset + self.max_packet_size - 8]
+            chunk = frame_data[offset:offset + self.max_packet_size - 24]  # Adjust for 16-byte video ID and 8-byte header
             chunk_size = len(chunk)
             offset += chunk_size
 
-            # Pack packet_id and frame_size into the header
-            packet_header = struct.pack('>HI', packet_id, frame_size)
+            # Pack the video ID, packet ID, and frame size into the header
+            packet_header = struct.pack('>16sHI', video_id, packet_id, frame_size)
             self.server_socket.sendto(packet_header + chunk, target_addr)
 
             packet_id += 1

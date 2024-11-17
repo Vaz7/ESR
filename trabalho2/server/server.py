@@ -19,9 +19,10 @@ class Server:
         self.vizinhos = self.getNeighbours(bootstrapper_ip, retry_interval=5, max_retries=10)
         print(f"Neighbours are: {self.vizinhos}")
 
-        self.latencyHandler = LatencyHandler(13334, self.vizinhos,self.video_paths)
+        self.latencyHandler = LatencyHandler(13334, self.vizinhos, list(self.video_paths.keys()))
 
-        self.stream_active_clients = {}
+        # Dictionary to map video names to sets of client addresses
+        self.stream_active_clients = {video_name: set() for video_name in self.video_paths}
         self.lock = threading.Lock()
 
         self.latencyHandler.start()
@@ -51,16 +52,19 @@ class Server:
                     command_parts = data.split()
                     if command_parts[0] == "START_STREAM" and len(command_parts) == 2:
                         video_name = command_parts[1]
-                        if addr[0] in self.vizinhos and video_name in self.video_streamers:
-                            self.stream_active_clients[addr] = video_name
+                        if video_name in self.video_streamers:
+                            self.stream_active_clients[video_name].add(addr)
                             print(f"Received START_STREAM for {video_name} from {addr}. Added to active clients.")
                             self.start_stream_for_client(addr, video_name)
                         else:
-                            print(f"Invalid video name or client {addr[0]} not in neighbours.")
-                    elif command_parts[0] == "STOP_STREAM" and addr in self.stream_active_clients:
-                        video_name = self.stream_active_clients.pop(addr)
-                        print(f"Received STOP_STREAM for {video_name} from {addr}. Removed from active clients.")
-                        self.stop_stream_for_client(addr, video_name)
+                            print(f"Invalid video name received from {addr}.")
+
+                    elif command_parts[0] == "STOP_STREAM" and len(command_parts) == 2:
+                        video_name = command_parts[1]
+                        if addr in self.stream_active_clients[video_name]:
+                            self.stream_active_clients[video_name].remove(addr)
+                            print(f"Received STOP_STREAM for {video_name} from {addr}. Removed from active clients.")
+                            self.stop_stream_for_client(addr, video_name)
 
                 client_socket.close()
             except Exception as e:
@@ -97,7 +101,6 @@ class Server:
                     continue
 
                 ip_list = [ip.strip() for ip in response_decoded.split(',')]
-
                 client_socket.close()
                 return ip_list
 
