@@ -14,7 +14,11 @@ class Server:
         self.server_socket.bind(("0.0.0.0", streaming_port))
 
         # Initialize the VideoStreamer for each video
-        self.video_streamers = {name: VideoStreamer(path, streaming_port) for name, path in self.video_paths.items()}
+        self.video_streamers = {}
+        for name, path in self.video_paths.items():
+            print(f"Initializing VideoStreamer for {name} with path: {path}")
+            self.video_streamers[name] = VideoStreamer(path, name, streaming_port)
+
 
         self.vizinhos = self.getNeighbours(bootstrapper_ip, retry_interval=5, max_retries=10)
         print(f"Neighbours are: {self.vizinhos}")

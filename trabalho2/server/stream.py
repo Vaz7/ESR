@@ -92,7 +92,6 @@ class VideoStreamer:
     
         # Encode the video name as a fixed-size identifier (e.g., 16 bytes, padded with spaces if needed)
         video_id = self.video_name.encode('utf-8')[:16].ljust(16)
-        
         # Override the port in client_addr with 12346
         target_addr = (client_addr[0], 12346)
     

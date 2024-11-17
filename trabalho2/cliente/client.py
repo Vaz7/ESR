@@ -41,7 +41,7 @@ class Client:
             raise ValueError(f"Invalid IP address in the list")
 
         for ip in self.ip_list:
-            monitor = LatencyMonitor(ip, 13335, self.latency_dict)
+            monitor = LatencyMonitor(ip, 13335, self.latency_dict,self.lock)
             self.monitors.append(monitor)
 
         # Start a thread for each latencyMonitor instance

@@ -3,11 +3,12 @@ import struct
 import time
 
 class LatencyMonitor:
-    def __init__(self, ip, port, shared_dict, data_size=1024, repetitions=2):
+    def __init__(self, ip, port, shared_dict,lock, data_size=1024, repetitions=2):
         self.ip = ip
         self.port = port
         self.shared_dict = shared_dict 
         self.data_size = data_size
+        self.lock = lock
         self.repetitions = repetitions
         self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.client_socket.settimeout(2)  # Set a timeout for packet responses
@@ -60,11 +61,13 @@ class LatencyMonitor:
             # Calculate average latency if there were successful transmissions
             if times:
                 avg_latency = sum(times) / len(times)
-                self.shared_dict[self.ip] = round(avg_latency, 3)
+                with self.lock:
+                    self.shared_dict[self.ip] = round(avg_latency, 3)
                 print(f"Average latency for {self.ip}: {self.shared_dict[self.ip]} ms")
             else:
                 print(f"No successful transmissions for {self.ip}. Setting latency to inf.")
-                self.shared_dict[self.ip] = float("inf")
+                with self.lock:
+                    self.shared_dict[self.ip] = float("inf")
     
             # Wait 30 seconds before the next full measurement cycle
             time.sleep(30)

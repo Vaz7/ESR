@@ -98,8 +98,7 @@ class OverlayNode:
 
                 # Extract the video identifier (first 16 bytes)
                 video_id_length = 16  # Fixed length of video ID in the header
-                video_id = data[:video_id_length].decode().strip()  # Decode and strip padding
-
+                video_id = data[:video_id_length].decode('utf-8').strip()  # Decode and strip padding
                 with self.lock:
                     if video_id in self.video_client_map:
                         for client_ip in self.video_client_map[video_id]:
