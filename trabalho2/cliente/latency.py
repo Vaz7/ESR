@@ -36,6 +36,7 @@ class LatencyMonitor:
                         if received_data.decode() == "NO_DATA":
                             print(f"No latency data available for {self.ip}.")
                         else:
+                            print(f"rcvd_data: {received_data}")
                             parts = received_data.decode().split(",")
                             # porque as mensagens vao sempre conter pelo menos timestamp,latencia,video1....
                             if len(parts) <3:
