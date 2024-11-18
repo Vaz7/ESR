@@ -3,25 +3,39 @@ import threading
 import socket
 
 class LatencyManager:
-    def __init__(self):
-        self.lock = threading.Lock()  # To ensure thread-safe access
+    def __init__(self, timeout=30):
+        self.lock = threading.Lock()  # Ensure thread-safe access
         self.server_latencies = {}  # Dictionary to store latencies for each server
-        self.availableVideos=None
+        self.last_update_time = {}  # Dictionary to store the last update time for each server
+        self.timeout = timeout  # Timeout period in seconds
+        self.availableVideos = None
 
-    def update_latency(self, server_ip, latency,availableVideos):
+    def update_latency(self, server_ip, latency, availableVideos):
         """Update the latency for a given server."""
         with self.lock:
             self.server_latencies[server_ip] = latency
-            self.availableVideos=availableVideos
+            self.last_update_time[server_ip] = time.time()  # Record current time for last update
+            self.availableVideos = availableVideos
             print(f"Updated latency for {server_ip}: {latency:.2f} ms")
+
+    def mark_stale_servers(self):
+        """Set the latency of stale servers to infinity if they haven't updated within the timeout period."""
+        with self.lock:
+            current_time = time.time()
+            for server_ip in self.server_latencies.keys():
+                if current_time - self.last_update_time[server_ip] > self.timeout:
+                    print(f"Marking server {server_ip} as stale (latency set to infinity) due to timeout.")
+                    self.server_latencies[server_ip] = float('inf')
 
     def get_best_server(self):
         """Get the best latency and its corresponding server IP."""
+        self.mark_stale_servers()  # Ensure stale servers are marked before selecting the best
         with self.lock:
             if not self.server_latencies:
-                return None, None
+                return None, None, None
             best_server = min(self.server_latencies, key=self.server_latencies.get)
-            return best_server, self.server_latencies[best_server],self.availableVideos
+            return best_server, self.server_latencies[best_server], self.availableVideos
+
 
     def print_latencies(self):
         """Print the current latencies for all tracked servers."""
@@ -51,6 +65,7 @@ class LatencyHandler:
         while True:
             client_socket, addr = server_socket.accept()
             print(f"Connection established with {addr}")
+            client_socket.settimeout(5)  # Set timeout for receiving data
 
             try:
                 # Receive the combined timestamp and additional data from the server
@@ -73,11 +88,17 @@ class LatencyHandler:
 
                 # Calculate latency
                 latency = (received_time - sent_time) * 1000  # Convert to milliseconds
-                self.latency_manager.update_latency(addr[0], latency,additional_data)
+                self.latency_manager.update_latency(addr[0], latency, additional_data)
+
+                # Remove stale servers whenever a new timestamp is received
+                self.latency_manager.mark_stale_servers()
 
                 # Close the connection after processing the data
                 client_socket.close()
 
+            except socket.timeout:
+                print(f"Connection with {addr} timed out. No data received.")
+                client_socket.close()
             except ValueError:
                 print(f"Failed to parse timestamp from {addr}. Data received: {data}")
                 client_socket.close()
