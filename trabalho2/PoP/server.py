@@ -163,7 +163,7 @@ class OverlayNode:
                         response = "NO_DATA"
 
                     latency_socket.sendto(response.encode(), client_addr)
-                    print(f"Sent latency data to {client_addr}: {response}")
+                    #print(f"Sent latency data to {client_addr}: {response}")
 
             except Exception as e:
                 print(f"Error while handling latency request: {e}")
