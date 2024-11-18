@@ -29,7 +29,7 @@ class LatencyHandler:
     
                     # Send the combined message
                     client_socket.send(message.encode())
-                    print(f"Sent latency initiation message with video list to {ip}")
+                    #print(f"Sent latency initiation message with video list to {ip}")
     
                     # Close the connection
                     client_socket.close()

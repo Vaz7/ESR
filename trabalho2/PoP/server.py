@@ -10,10 +10,11 @@ class OverlayNode:
         self.timestamp_port = timestamp_port
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.server_socket.bind(("0.0.0.0", streaming_port))
-        
+
         # Shared state for managing streaming and client requests
         self.video_client_map = {}  # Maps video names to sets of client IPs
         self.lock = threading.Lock()
+        self.current_server = None  # Current source server for the stream
 
         # Initialize latency manager and handler for timestamp data
         self.latency_manager = LatencyManager()
@@ -26,6 +27,28 @@ class OverlayNode:
         threading.Thread(target=self.receive_control_data).start()  # Handle control data from clients
         threading.Thread(target=self.retransmit_stream).start()  # Retransmit video streams
         threading.Thread(target=self.receive_client_latency_request).start()  # Handle client latency requests
+        threading.Thread(target=self.monitor_and_switch_server).start()  # Monitor latency and switch servers
+
+    def monitor_and_switch_server(self):
+        """Periodically checks for the best server based on latency and switches if necessary."""
+        while True:
+            time.sleep(10)  # Adjust the interval as needed
+            best_server_ip, best_latency, _ = self.latency_manager.get_best_server()
+
+            with self.lock:
+                if best_server_ip and best_server_ip != self.current_server:
+                    print(f"Switching to a better server: {best_server_ip} with latency {best_latency} ms")
+                    
+                    # Send STOP_STREAM to the current server
+                    if self.current_server:
+                        for video_name in self.video_client_map:
+                            self.send_control_command(self.current_server, f"STOP_STREAM {video_name}")
+                    
+                    # Update the current server and send START_STREAM commands for active videos
+                    self.current_server = best_server_ip
+                    for video_name in self.video_client_map:
+                        if self.video_client_map[video_name]:
+                            self.send_control_command(best_server_ip, f"START_STREAM {video_name}")
 
     def receive_control_data(self):
         """Listen for incoming TCP control commands from clients."""
@@ -69,11 +92,9 @@ class OverlayNode:
             self.video_client_map[video_name].add(client_ip)
             print(f"Added client {client_ip} to video {video_name}.")
 
-            if len(self.video_client_map[video_name]) == 1:
+            if len(self.video_client_map[video_name]) == 1 and self.current_server:
                 # First client requesting this video, send START_STREAM command upstream
-                best_server_ip = self.latency_manager.get_best_server()[0]
-                if best_server_ip:
-                    self.send_control_command(best_server_ip, f"START_STREAM {video_name}")
+                self.send_control_command(self.current_server, f"START_STREAM {video_name}")
 
     def remove_client_from_video(self, client_ip, video_name):
         """Remove a client from the list for a specific video and send stop command if necessary."""
@@ -81,11 +102,9 @@ class OverlayNode:
             self.video_client_map[video_name].remove(client_ip)
             print(f"Removed client {client_ip} from video {video_name}.")
 
-            if len(self.video_client_map[video_name]) == 0:
+            if len(self.video_client_map[video_name]) == 0 and self.current_server:
                 # No more clients requesting this video, send STOP_STREAM command upstream
-                best_server_ip = self.latency_manager.get_best_server()[0]
-                if best_server_ip:
-                    self.send_control_command(best_server_ip, f"STOP_STREAM {video_name}")
+                self.send_control_command(self.current_server, f"STOP_STREAM {video_name}")
 
     def retransmit_stream(self):
         """Retransmit UDP stream chunks only to the clients requesting the specific video."""
