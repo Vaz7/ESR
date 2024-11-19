@@ -3,7 +3,7 @@ import threading
 import socket
 
 class LatencyManager:
-    def __init__(self, timeout=30):
+    def __init__(self, timeout=20):
         self.lock = threading.Lock()  # Ensure thread-safe access
         self.server_latencies = {}  # Dictionary to store latencies for each server
         self.last_update_time = {}  # Dictionary to store the last update time for each server
@@ -18,18 +18,19 @@ class LatencyManager:
             self.availableVideos = availableVideos
             print(f"Updated latency for {server_ip}: {latency:.2f} ms")
 
-    def mark_stale_servers(self):
-        """Set the latency of stale servers to infinity if they haven't updated within the timeout period."""
+    def delete_stale_servers(self):
+        """Remove servers that haven't updated latency within the timeout period."""
         with self.lock:
             current_time = time.time()
-            for server_ip in self.server_latencies.keys():
+            for server_ip in list(self.server_latencies.keys()):
                 if current_time - self.last_update_time[server_ip] > self.timeout:
-                    print(f"Marking server {server_ip} as stale (latency set to infinity) due to timeout.")
-                    self.server_latencies[server_ip] = float('inf')
+                    print(f"Removing stale server {server_ip} due to timeout.")
+                    del self.server_latencies[server_ip]
+                    del self.last_update_time[server_ip]
 
     def get_best_server(self):
         """Get the best latency and its corresponding server IP."""
-        self.mark_stale_servers()  # Ensure stale servers are marked before selecting the best
+        self.delete_stale_servers()  # Ensure stale servers are marked before selecting the best
         with self.lock:
             if not self.server_latencies:
                 return None, None, None
@@ -89,9 +90,6 @@ class LatencyHandler:
                 # Calculate latency
                 latency = (received_time - sent_time) * 1000  # Convert to milliseconds
                 self.latency_manager.update_latency(addr[0], latency, additional_data)
-
-                # Remove stale servers whenever a new timestamp is received
-                self.latency_manager.mark_stale_servers()
 
                 # Close the connection after processing the data
                 client_socket.close()
