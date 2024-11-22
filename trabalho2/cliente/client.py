@@ -15,7 +15,7 @@ class Client:
         self.current_stream_ip = None
         self.lock = threading.Lock()
         #Depois aqui tem de se mudar para ele tentar com todos se eles nao forem respondendo
-        self.wantedVideo = get_and_choose_video(ip_list[0],13335)
+        self.wantedVideo = get_and_choose_video(ip_list,13335)
 
         self.start_monitoring()
         # Initialize a single StreamReceiver to receive data on stream_port
