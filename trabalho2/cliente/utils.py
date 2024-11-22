@@ -8,7 +8,7 @@ def get_and_choose_video(ip_list, port, data_size=1024):
     """
     while True:  # Infinite loop to keep trying
         for ip in ip_list:
-            print(f"Trying IP: {ip}")
+            print(f"Trying to fetch videos from: {ip}")
             client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             client_socket.settimeout(5)  # Set a timeout for packet responses
 

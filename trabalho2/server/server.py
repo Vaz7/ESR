@@ -2,12 +2,16 @@ import socket
 import threading
 import time
 import sys
+import os  # Added for extracting file names
 from latency import LatencyHandler
 from stream import VideoStreamer
 
 class Server:
     def __init__(self, video_paths, bootstrapper_ip, streaming_port=12346, control_port=13333):
-        self.video_paths = {f"video_{i+1}": path for i, path in enumerate(video_paths)}
+        # Use original video file names without extensions as the keys
+        self.video_paths = {
+            os.path.splitext(os.path.basename(path))[0]: path for path in video_paths
+        }
         self.streaming_port = streaming_port
         self.control_port = control_port
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -18,7 +22,6 @@ class Server:
         for name, path in self.video_paths.items():
             print(f"Initializing VideoStreamer for {name} with path: {path}")
             self.video_streamers[name] = VideoStreamer(path, name, streaming_port)
-
 
         self.vizinhos = self.getNeighbours(bootstrapper_ip, retry_interval=5, max_retries=10)
         print(f"Neighbours are: {self.vizinhos}")
