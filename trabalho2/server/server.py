@@ -47,7 +47,7 @@ class Server:
 
         while True:
             client_socket, addr = control_socket.accept()
-            print(f"Control connection established with {addr}")
+            #print(f"Control connection established with {addr}")
 
             try:
                 data = client_socket.recv(1024).decode()

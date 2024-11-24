@@ -63,11 +63,10 @@ class OverlayNode:
                 try:
                     heartbeat_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                     heartbeat_socket.connect((self.current_server, self.control_port))
-                    heartbeat_socket.send("ole".encode())  # The heartbeat message
+                    heartbeat_socket.send("HEARTBEAT".encode())  # The heartbeat message
                     heartbeat_socket.close()
-                    print(f"Sent 'ole' (heartbeat) to {self.current_server}")
                 except Exception as e:
-                    print(f"Failed to send 'ole' to {self.current_server}. Error: {e}")
+                    print(f"Failed to send 'HEARTBEAT' to {self.current_server}. Error: {e}")
             time.sleep(2)  # Send heartbeat every 2 seconds
 
     def receive_heartbeat_requests(self):
@@ -106,7 +105,7 @@ class OverlayNode:
                 if not data:
                     client_socket.close()
                     continue
-
+                
                 with self.lock:
                     command_parts = data.split()
                     if len(command_parts) == 2:
@@ -119,7 +118,7 @@ class OverlayNode:
                             self.remove_client_from_video(addr[0], video_name)
                         elif command == "HEARTBEAT":
                             self.last_heartbeat_time = time.time()  # Update last heartbeat timestamp
-
+                            print("tripspsps")
                 client_socket.close()
             except Exception as e:
                 print(f"Error while handling control data from {addr}: {e}")

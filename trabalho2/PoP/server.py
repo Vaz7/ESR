@@ -57,11 +57,11 @@ class OverlayNode:
                 try:
                     heartbeat_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                     heartbeat_socket.connect((self.current_server, self.control_port))
-                    heartbeat_socket.send("ole".encode())
+                    heartbeat_socket.send("HEARTBEAT".encode())
                     heartbeat_socket.close()
-                    print(f"Sent 'ole' to {self.current_server}")
+                    print(f"Sent HEARTBEAT to {self.current_server}")
                 except Exception as e:
-                    print(f"Failed to send 'ole' to {self.current_server}. Error: {e}")
+                    print(f"Failed to send 'HEARTBEAT' to {self.current_server}. Error: {e}")
             time.sleep(2)  
 
 
