@@ -28,6 +28,7 @@ class OverlayNode:
         threading.Thread(target=self.retransmit_stream).start()  # Retransmit video streams
         threading.Thread(target=self.receive_client_latency_request).start()  # Handle client latency requests
         threading.Thread(target=self.monitor_and_switch_server).start()  # Monitor latency and switch servers
+        threading.Thread(target=self.send_heartbeat).start()  # Start the heartbeat thread
 
     def monitor_and_switch_server(self):
         """Periodically checks for the best server based on latency and switches if necessary."""
@@ -49,6 +50,20 @@ class OverlayNode:
                     for video_name in self.video_client_map:
                         if self.video_client_map[video_name]:
                             self.send_control_command(best_server_ip, f"START_STREAM {video_name}")
+    def send_heartbeat(self):
+        """Periodically send a 'ole' message to the current server."""
+        while True:
+            if self.current_server:
+                try:
+                    heartbeat_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    heartbeat_socket.connect((self.current_server, self.control_port))
+                    heartbeat_socket.send("ole".encode())
+                    heartbeat_socket.close()
+                    print(f"Sent 'ole' to {self.current_server}")
+                except Exception as e:
+                    print(f"Failed to send 'ole' to {self.current_server}. Error: {e}")
+            time.sleep(2)  
+
 
     def receive_control_data(self):
         """Listen for incoming TCP control commands from clients."""

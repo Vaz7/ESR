@@ -4,6 +4,7 @@ import time
 import sys
 from latency import LatencyManager, LatencyHandler
 
+
 class OverlayNode:
     def __init__(self, streaming_port, bootstrapper_ip, control_port=13333):
         self.streaming_port = streaming_port
@@ -17,6 +18,8 @@ class OverlayNode:
         # Shared state for managing streaming
         self.video_client_map = {}  # Maps video names to sets of client IPs
         self.lock = threading.Lock()
+        self.current_server = None  # Current best server
+        self.last_heartbeat_time = time.time()  # Track last heartbeat timestamp
 
         # Initialize latency and stream managers
         self.latency_manager = LatencyManager()
@@ -28,6 +31,64 @@ class OverlayNode:
         threading.Thread(target=self.latency_handler.start).start()
         threading.Thread(target=self.receive_control_data).start()
         threading.Thread(target=self.retransmit_stream).start()
+        threading.Thread(target=self.monitor_and_switch_server).start()
+        threading.Thread(target=self.send_heartbeat).start()
+        threading.Thread(target=self.receive_heartbeat_requests).start()
+
+    def monitor_and_switch_server(self):
+        """Periodically checks for the best server based on latency and switches if necessary."""
+        while True:
+            time.sleep(10)  # Adjust the interval as needed
+            best_server_ip = self.latency_manager.get_best_server()
+
+            with self.lock:
+                if best_server_ip and best_server_ip != self.current_server:
+                    print(f"Switching to a better server: {best_server_ip}")
+                    
+                    # Send STOP_STREAM to the current server for all active videos
+                    if self.current_server:
+                        for video_name in self.video_client_map:
+                            self.send_control_command(self.current_server, f"STOP_STREAM {video_name}")
+
+                    # Update the current server and send START_STREAM commands for active videos
+                    self.current_server = best_server_ip
+                    for video_name in self.video_client_map:
+                        if self.video_client_map[video_name]:  # Only if clients are requesting the video
+                            self.send_control_command(best_server_ip, f"START_STREAM {video_name}")
+
+    def send_heartbeat(self):
+        """Periodically send a 'heartbeat' message to the current server."""
+        while True:
+            if self.current_server:
+                try:
+                    heartbeat_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    heartbeat_socket.connect((self.current_server, self.control_port))
+                    heartbeat_socket.send("ole".encode())  # The heartbeat message
+                    heartbeat_socket.close()
+                    print(f"Sent 'ole' (heartbeat) to {self.current_server}")
+                except Exception as e:
+                    print(f"Failed to send 'ole' to {self.current_server}. Error: {e}")
+            time.sleep(2)  # Send heartbeat every 2 seconds
+
+    def receive_heartbeat_requests(self):
+        """Listen for heartbeat messages and reset the client list if no heartbeat is received within 6 seconds."""
+        while True:
+            try:
+                # Check if last heartbeat was received more than 6 seconds ago
+                if time.time() - self.last_heartbeat_time > 6:
+                    with self.lock:
+                        if self.video_client_map:
+                            print("Heartbeat timeout! Resetting client list and stopping streams.")
+                            self.video_client_map.clear()  # Clear the client list
+                            # send STOP_STREAM to the current server for all videos (no caso da ligaçao para o server ser a mesma isto nao adiata, mas still)
+                            if self.current_server:
+                                for video_name in self.video_client_map:
+                                    self.send_control_command(self.current_server, f"STOP_STREAM {video_name}")
+
+                time.sleep(1)  # Check every second
+
+            except Exception as e:
+                print(f"Error while checking heartbeat: {e}")
 
     def receive_control_data(self):
         """Listen for incoming TCP control commands."""
@@ -56,6 +117,8 @@ class OverlayNode:
                             self.add_client_to_video(addr[0], video_name)
                         elif command == "STOP_STREAM":
                             self.remove_client_from_video(addr[0], video_name)
+                        elif command == "HEARTBEAT":
+                            self.last_heartbeat_time = time.time()  # Update last heartbeat timestamp
 
                 client_socket.close()
             except Exception as e:
