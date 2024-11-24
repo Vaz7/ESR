@@ -155,7 +155,10 @@ class OverlayNode:
             control_socket.connect((target_ip, self.control_port))
             control_socket.send(command.encode())
             control_socket.close()
-            print(f"Sent '{command}' to {target_ip}")
+            
+            #nao quero andar a entupir o terminal
+            if(command!="HEARTBEAT"):
+                print(f"Sent '{command}' to {target_ip}")
         except Exception as e:
             print(f"Failed to send '{command}' to {target_ip}. Error: {e}")
 

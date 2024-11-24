@@ -98,10 +98,10 @@ class OverlayNode:
 
         while True:
             client_socket, addr = control_socket.accept()
-            print(f"Control connection established with {addr}")
+            #print(f"Control connection established with {addr}")
 
             try:
-                data = client_socket.recv(1024).decode()
+                data = client_socket.recv(1024).decode().strip()
                 if not data:
                     client_socket.close()
                     continue
@@ -116,9 +116,10 @@ class OverlayNode:
                             self.add_client_to_video(addr[0], video_name)
                         elif command == "STOP_STREAM":
                             self.remove_client_from_video(addr[0], video_name)
-                        elif command == "HEARTBEAT":
+                    elif len(command_parts) == 1:
+                        command = command_parts[0]
+                        if command == "HEARTBEAT":
                             self.last_heartbeat_time = time.time()  # Update last heartbeat timestamp
-                            print("tripspsps")
                 client_socket.close()
             except Exception as e:
                 print(f"Error while handling control data from {addr}: {e}")
