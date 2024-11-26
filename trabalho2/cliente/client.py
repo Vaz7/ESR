@@ -6,9 +6,10 @@ from stream_rcv import StreamReceiver
 from utils import get_and_choose_video
 
 class Client:
-    def __init__(self, ip_list, port=13333, stream_port=12346):
+    def __init__(self, ip_list, port=13333, stream_port=12346,heartbeat_port=22222):
         self.port = port
         self.stream_port = stream_port
+        self.heartbeat_port = heartbeat_port
         self.latency_dict = {}  # Shared dictionary for all IPs' latency measurements
         self.monitors = []  # List to keep track of monitor threads
         self.ip_list = ip_list
@@ -22,6 +23,7 @@ class Client:
         self.stream_receiver = StreamReceiver(self.stream_port)
         self.stream_thread = threading.Thread(target=self.stream_receiver.start_stream)
         self.stream_thread.start()  # Start the receiver thread once
+        threading.Thread(target=self.send_heartbeat).start()  # Start the heartbeat thread
 
     def validateIpAddress(self):
         for ip in self.ip_list:
@@ -35,7 +37,21 @@ class Client:
                 if num < 0 or num > 255:
                     return False
         return True
-    
+                                
+    def send_heartbeat(self):
+        """Periodically send a 'heartbeat' message to the current server."""
+        while True:
+            if self.current_stream_ip:
+                try:
+                    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as heartbeat_socket:
+                        heartbeat_socket.connect((self.current_stream_ip, self.heartbeat_port))
+                        heartbeat_socket.sendall("HEARTBEAT".encode())
+                        #print(f"Sent HEARTBEAT to {self.current_server}.")
+                except Exception as e:
+                    print(f"Failed to send 'HEARTBEAT' to {self.current_stream_ip}. Error: {e}")
+            time.sleep(2)  # Send heartbeat every 2 seconds
+
+
     def start_monitoring(self):
         if not self.validateIpAddress():
             raise ValueError(f"Invalid IP address in the list")
@@ -65,7 +81,7 @@ class Client:
                     continue
                 
                 best_latency = self.latency_dict[best_ip]
-                print(f"Best available latency: {best_latency} ms from {best_ip}")
+                #print(f"Best available latency: {best_latency} ms from {best_ip}")
 
                 # Switch to the new stream if it's better than the current one
                 if self.current_stream_ip != best_ip:

@@ -74,7 +74,7 @@ class Server:
 
                     elif command_parts[0] == "STOP_STREAM" and len(command_parts) == 2:
                         video_name = command_parts[1]
-                        # Check if an entry with the same IP exists
+                        
                         matching_clients = [
                             client for client in self.stream_active_clients[video_name]
                             if client[0] == addr[0]

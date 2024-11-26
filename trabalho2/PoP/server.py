@@ -17,6 +17,8 @@ class OverlayNode:
         self.lock = threading.Lock()
         self.current_server = None  # Current source server for the stream
 
+        self.client_heartbeat_map = {}  # Tracks last heartbeat timestamp for each client
+
         # Initialize latency manager and handler for timestamp data
         self.latency_manager = LatencyManager()
         self.latency_handler = LatencyHandler(self.timestamp_port, self.latency_manager)
@@ -30,6 +32,9 @@ class OverlayNode:
         threading.Thread(target=self.receive_client_latency_request).start()  # Handle client latency requests
         threading.Thread(target=self.monitor_and_switch_server).start()  # Monitor latency and switch servers
         threading.Thread(target=self.send_heartbeat).start()  # Start the heartbeat thread
+        threading.Thread(target=self.receive_heartbeat_requests).start()
+        threading.Thread(target=self.check_client_heartbeats).start()
+
 
     def monitor_and_switch_server(self):
         """Periodically checks for the best server based on latency and switches if necessary."""
@@ -64,6 +69,58 @@ class OverlayNode:
                 except Exception as e:
                     print(f"Failed to send 'HEARTBEAT' to {self.current_server}. Error: {e}")
             time.sleep(2)  # Send heartbeat every 2 seconds
+
+
+    def receive_heartbeat_requests(self):
+        """Listen for heartbeat messages on a separate TCP port."""
+        heartbeat_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        heartbeat_socket.bind(("0.0.0.0", self.heartbeat_port))
+        heartbeat_socket.listen(5)
+        heartbeat_socket.settimeout(1)  # Set a timeout for the socket to prevent blocking indefinitely
+        print(f"Server listening for heartbeat messages on TCP port {self.heartbeat_port}...")
+
+        while True:
+            try:
+                client_socket, addr = heartbeat_socket.accept()
+                with client_socket:
+                    data = client_socket.recv(1024).decode()
+                    if data == "HEARTBEAT":
+                        with self.lock:
+                            self.client_heartbeat_map[addr[0]] = time.time()
+                            #print(f"Heartbeat received from client {addr[0]}.")
+            except socket.timeout:
+                # Timeout reached; loop back to handle timeouts or new connections
+                pass
+            except Exception as e:
+                print(f"Error while handling heartbeat requests: {e}")
+    
+    def check_client_heartbeats(self):
+        """Periodically check client heartbeats and remove stale clients."""
+        while True:
+            try:
+                current_time = time.time()
+                stale_clients = []
+
+                with self.lock:
+                    # Find stale clients (based only on IP)
+                    for client_ip, last_heartbeat in self.client_heartbeat_map.items():
+                        if current_time - last_heartbeat > 6:  # 6-second timeout
+                            stale_clients.append(client_ip)
+
+                    # Remove stale clients and stop their streams
+                    for client_ip in stale_clients:
+                        for video_name, clients in self.video_client_map.items():
+                            # Iterate over the tuples in `clients`
+                            for client in list(clients):  # Convert to list to allow removal during iteration
+                                if client == client_ip:  # Compare only the IP portion
+                                    clients.remove(client)
+                                    print(f"Client {client} removed from video {video_name} due to heartbeat timeout.")
+                        del self.client_heartbeat_map[client_ip]  # Remove from heartbeat map
+
+                time.sleep(1)  # Check every second
+            except Exception as e:
+                print(f"Error while checking client heartbeats: {e}")
+
 
     def receive_control_data(self):
         """Listen for incoming TCP control commands from clients."""
