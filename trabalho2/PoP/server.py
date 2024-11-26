@@ -4,9 +4,10 @@ import time
 from latency import LatencyManager, LatencyHandler
 
 class OverlayNode:
-    def __init__(self, streaming_port, control_port=13333, timestamp_port=13334):
+    def __init__(self, streaming_port, control_port=13333, timestamp_port=13334,heartbeat_port=22222):
         self.streaming_port = streaming_port
         self.control_port = control_port
+        self.heartbeat_port = heartbeat_port
         self.timestamp_port = timestamp_port
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.server_socket.bind(("0.0.0.0", streaming_port))
@@ -50,20 +51,19 @@ class OverlayNode:
                     for video_name in self.video_client_map:
                         if self.video_client_map[video_name]:
                             self.send_control_command(best_server_ip, f"START_STREAM {video_name}")
+                            
     def send_heartbeat(self):
-        """Periodically send a 'ole' message to the current server."""
+        """Periodically send a 'heartbeat' message to the current server."""
         while True:
             if self.current_server:
                 try:
-                    heartbeat_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                    heartbeat_socket.connect((self.current_server, self.control_port))
-                    heartbeat_socket.send("HEARTBEAT".encode())
-                    heartbeat_socket.close()
-                    print(f"Sent HEARTBEAT to {self.current_server}")
+                    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as heartbeat_socket:
+                        heartbeat_socket.connect((self.current_server, self.heartbeat_port))
+                        heartbeat_socket.sendall("HEARTBEAT".encode())
+                        #print(f"Sent HEARTBEAT to {self.current_server}.")
                 except Exception as e:
                     print(f"Failed to send 'HEARTBEAT' to {self.current_server}. Error: {e}")
-            time.sleep(2)  
-
+            time.sleep(2)  # Send heartbeat every 2 seconds
 
     def receive_control_data(self):
         """Listen for incoming TCP control commands from clients."""
@@ -152,13 +152,12 @@ class OverlayNode:
         """Send a control command to a specified node."""
         try:
             control_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            control_socket.settimeout(5)  # Timeout after 5 seconds
             control_socket.connect((target_ip, self.control_port))
             control_socket.send(command.encode())
             control_socket.close()
             
-            #nao quero andar a entupir o terminal
-            if(command!="HEARTBEAT"):
-                print(f"Sent '{command}' to {target_ip}")
+            print(f"Sent '{command}' to {target_ip}")
         except Exception as e:
             print(f"Failed to send '{command}' to {target_ip}. Error: {e}")
 

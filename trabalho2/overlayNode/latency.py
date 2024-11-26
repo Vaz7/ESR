@@ -48,7 +48,7 @@ class LatencyHandler:
 
         while True:
             client_socket, addr = server_socket.accept()
-            print(f"Connection established with {addr}")
+            #print(f"Connection established with {addr}")
 
             try:
                 # Receive the combined timestamp and additional data from the server
@@ -96,7 +96,7 @@ class LatencyHandler:
                     client_socket.settimeout(5)  # Set a 5-second timeout for the connection attempt
                     client_socket.connect((ip, self.port))
                     client_socket.send(data.encode())
-                    print(f"Forwarded timestamp and video list to {ip}")
+                    #print(f"Forwarded timestamp and video list to {ip}")
     
             except (socket.timeout, BrokenPipeError):
                 print(f"Connection to {ip} timed out or broken pipe detected.")

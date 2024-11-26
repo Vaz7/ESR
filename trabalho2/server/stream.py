@@ -64,21 +64,36 @@ class VideoStreamer:
                 threading.Thread(target=self.start_stream, args=(client_addr,), daemon=True).start()
 
     def remove_client(self, client_addr):
-        """Remove a client from the list of active clients."""
+        """Remove a client from the list of active clients based on the IP address."""
         with self.client_lock:
-            if client_addr in self.clients:
-                self.clients.remove(client_addr)
-                print(f"Client {client_addr} removed from streaming.")
+            ip_to_remove = client_addr[0]  # Extract the IP part
+            clients_to_remove = {client for client in self.clients if client[0] == ip_to_remove}  # Find matching clients
+
+            if clients_to_remove:
+                for client in clients_to_remove:
+                    self.clients.remove(client)
+                #print(f"Clients with IP {ip_to_remove} removed from streaming.")
+
 
     def start_stream(self, client_addr):
         """Send the latest frame to a specific client continuously."""
-        while client_addr in self.clients:
+        while True:
+            with self.client_lock:
+                # Check if the IP of the client is still in the list
+                active_ips = {client[0] for client in self.clients}  # Extract only the IPs
+                
+                if client_addr[0] not in active_ips:  # Compare the IP part
+                    #print(f"Stopping stream to {client_addr} as they are no longer in the client list.")
+                    break
+
             with self.frame_lock:
                 frame_data = self.current_frame
 
             if frame_data:
                 self.send_frame_to_client(frame_data, client_addr)
+
             time.sleep(1 / 30)  # Adjust this to match video FPS or client streaming needs
+
 
     def send_frame_to_client(self, frame_data, client_addr):
         """Send the frame to a specific client in chunks, targeting port 12346."""
