@@ -103,33 +103,29 @@ class Client:
 
 
     def send_start_stream(self, server_ip):
-        """Send a START_STREAM message with the chosen video to the specified server via TCP."""
+        """Send a START_STREAM message with the chosen video to the specified server via UDP."""
         if not self.wantedVideo:
             print("No video selected for streaming.")
             return
     
         try:
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-                sock.settimeout(5)  # Set a timeout for the connection
-                sock.connect((server_ip, self.port))  # Connect to the server's control port
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
                 message = f"START_STREAM {self.wantedVideo}"
-                sock.sendall(message.encode())
-                print(f"Sent START_STREAM for {self.wantedVideo} to {server_ip}:{self.port}")
+                sock.sendto(message.encode(), (server_ip, self.port))
+                print(f"Sent START_STREAM for {self.wantedVideo} to {server_ip}:{self.port} via UDP")
         except Exception as e:
-            print(f"Failed to send START_STREAM for {self.wantedVideo} to {server_ip}. Error: {e}")
+            print(f"Failed to send START_STREAM for {self.wantedVideo} to {server_ip} via UDP. Error: {e}")
     
     def send_stop_stream(self, server_ip):
-        """Send a STOP_STREAM message with the chosen video to the specified server via TCP."""
+        """Send a STOP_STREAM message with the chosen video to the specified server via UDP."""
         if not self.wantedVideo:
             print("No video selected for stopping.")
             return
     
         try:
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-                sock.settimeout(5)  # Set a timeout for the connection
-                sock.connect((server_ip, self.port))  # Connect to the server's control port
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
                 message = f"STOP_STREAM {self.wantedVideo}"
-                sock.sendall(message.encode())
-                print(f"Sent STOP_STREAM for {self.wantedVideo} to {server_ip}:{self.port}")
+                sock.sendto(message.encode(), (server_ip, self.port))
+                print(f"Sent STOP_STREAM for {self.wantedVideo} to {server_ip}:{self.port} via UDP")
         except Exception as e:
-            print(f"Failed to send STOP_STREAM for {self.wantedVideo} to {server_ip}. Error: {e}")
+            print(f"Failed to send STOP_STREAM for {self.wantedVideo} to {server_ip} via UDP. Error: {e}")

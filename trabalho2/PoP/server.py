@@ -124,20 +124,16 @@ class OverlayNode:
 
     def receive_control_data(self):
         """Listen for incoming TCP control commands from clients."""
-        control_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        control_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         control_socket.bind(("0.0.0.0", self.control_port))
         control_socket.listen(5)
-        print(f"Listening for control data on TCP port {self.control_port}...")
+        print(f"Listening for control data on UDP port {self.control_port}...")
 
         while True:
-            client_socket, addr = control_socket.accept()
             print(f"Control connection established with {addr}")
 
             try:
-                data = client_socket.recv(1024).decode()
-                if not data:
-                    client_socket.close()
-                    continue
+                data, addr = control_socket.recvfrom(1024)  # Receive data from the control socket
 
                 with self.lock:
                     command_parts = data.split()
