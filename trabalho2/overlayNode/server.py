@@ -116,8 +116,9 @@ class OverlayNode:
                             # Iterate over the tuples in `clients`
                             for client in list(clients):  # Convert to list to allow removal during iteration
                                 if client == client_ip:  # Compare only the IP portion
-                                    clients.remove(client)
                                     print(f"Client {client} removed from video {video_name} due to heartbeat timeout.")
+                                    self.remove_client_from_video(client_ip, video_name)
+
                         del self.client_heartbeat_map[client_ip]  # Remove from heartbeat map
 
                 time.sleep(1)  # Check every second

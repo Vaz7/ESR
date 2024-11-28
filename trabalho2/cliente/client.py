@@ -39,17 +39,18 @@ class Client:
         return True
                                 
     def send_heartbeat(self):
-        """Periodically send a 'heartbeat' message to the current server."""
+        """Periodically send a 'heartbeat' message to the current server via UDP."""
         while True:
             if self.current_stream_ip:
                 try:
-                    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as heartbeat_socket:
-                        heartbeat_socket.connect((self.current_stream_ip, self.heartbeat_port))
-                        heartbeat_socket.sendall("HEARTBEAT".encode())
-                        #print(f"Sent HEARTBEAT to {self.current_server}.")
+                    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as heartbeat_socket:
+                        message = "HEARTBEAT"
+                        heartbeat_socket.sendto(message.encode(), (self.current_stream_ip, self.heartbeat_port))
+                        #print(f"Sent HEARTBEAT to {self.current_stream_ip}:{self.heartbeat_port} via UDP")
                 except Exception as e:
-                    print(f"Failed to send 'HEARTBEAT' to {self.current_stream_ip}. Error: {e}")
+                    print(f"Failed to send 'HEARTBEAT' to {self.current_stream_ip} via UDP. Error: {e}")
             time.sleep(2)  # Send heartbeat every 2 seconds
+
 
 
     def start_monitoring(self):

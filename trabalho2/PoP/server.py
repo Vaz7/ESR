@@ -72,27 +72,24 @@ class OverlayNode:
 
 
     def receive_heartbeat_requests(self):
-        """Listen for heartbeat messages on a separate TCP port."""
-        heartbeat_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        heartbeat_socket.bind(("0.0.0.0", self.heartbeat_port))
-        heartbeat_socket.listen(5)
-        heartbeat_socket.settimeout(1)  # Set a timeout for the socket to prevent blocking indefinitely
-        print(f"Server listening for heartbeat messages on TCP port {self.heartbeat_port}...")
+        """Listen for heartbeat messages on a UDP port."""
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as heartbeat_socket:
+                heartbeat_socket.bind(("0.0.0.0", self.heartbeat_port))
+                print(f"Server listening for heartbeat messages on UDP port {self.heartbeat_port}...")
 
-        while True:
-            try:
-                client_socket, addr = heartbeat_socket.accept()
-                with client_socket:
-                    data = client_socket.recv(1024).decode()
-                    if data == "HEARTBEAT":
-                        with self.lock:
-                            self.client_heartbeat_map[addr[0]] = time.time()
-                            #print(f"Heartbeat received from client {addr[0]}.")
-            except socket.timeout:
-                # Timeout reached; loop back to handle timeouts or new connections
-                pass
-            except Exception as e:
-                print(f"Error while handling heartbeat requests: {e}")
+                while True:
+                    try:
+                        data, addr = heartbeat_socket.recvfrom(1024)  # Receive data from the UDP socket
+                        if data.decode() == "HEARTBEAT":
+                            with self.lock:
+                                self.client_heartbeat_map[addr[0]] = time.time()  # Update the heartbeat timestamp
+                                #print(f"Heartbeat received from client {addr[0]}")
+                    except Exception as e:
+                        print(f"Error while handling heartbeat messages: {e}")
+        except Exception as e:
+            print(f"Failed to initialize heartbeat socket. Error: {e}")
+
     
     def check_client_heartbeats(self):
         """Periodically check client heartbeats and remove stale clients."""
@@ -113,8 +110,9 @@ class OverlayNode:
                             # Iterate over the tuples in `clients`
                             for client in list(clients):  # Convert to list to allow removal during iteration
                                 if client == client_ip:  # Compare only the IP portion
-                                    clients.remove(client)
                                     print(f"Client {client} removed from video {video_name} due to heartbeat timeout.")
+                                    self.remove_client_from_video(client_ip, video_name)
+
                         del self.client_heartbeat_map[client_ip]  # Remove from heartbeat map
 
                 time.sleep(1)  # Check every second
@@ -123,33 +121,32 @@ class OverlayNode:
 
 
     def receive_control_data(self):
-        """Listen for incoming TCP control commands from clients."""
+        """Listen for incoming UDP control commands from clients on a dedicated control port."""
         control_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        control_socket.bind(("0.0.0.0", self.control_port))
-        control_socket.listen(5)
+        control_socket.bind(("0.0.0.0", self.control_port))  # Use a dedicated control port
         print(f"Listening for control data on UDP port {self.control_port}...")
 
         while True:
-            print(f"Control connection established with {addr}")
-
             try:
                 data, addr = control_socket.recvfrom(1024)  # Receive data from the control socket
+                message = data.decode()
+                print(f"Control message from {addr}: {message}")
 
-                with self.lock:
-                    command_parts = data.split()
-                    if len(command_parts) == 2:
-                        command = command_parts[0]
-                        video_name = command_parts[1]
+                command_parts = message.split(" ", 1)  # Split into command and argument
+                if len(command_parts) == 2:
+                    command, video_name = command_parts
 
+                    with self.lock:
                         if command == "START_STREAM":
                             self.add_client_to_video(addr[0], video_name)
                         elif command == "STOP_STREAM":
                             self.remove_client_from_video(addr[0], video_name)
+                        else:
+                            print(f"Unknown control command: {command}")
 
-                client_socket.close()
             except Exception as e:
-                print(f"Error while handling control data from {addr}: {e}")
-                client_socket.close()
+                print(f"Error while handling control data: {e}")
+
 
     def add_client_to_video(self, client_ip, video_name):
         """Add a client to the list for a specific video and send start command if necessary."""
