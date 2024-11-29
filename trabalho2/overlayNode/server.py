@@ -48,7 +48,7 @@ class OverlayNode:
 
             with self.lock:
                 if best_server_ip and best_server_ip != self.current_server:
-                    print(f"Switching to a better server: {best_server_ip}")
+                    #print(f"Switching to a better server: {best_server_ip}")
                     
                     # Send STOP_STREAM to the current server for all active videos
                     if self.current_server:
@@ -166,7 +166,7 @@ class OverlayNode:
 
         if client_ip not in self.video_client_map[video_name]:
             self.video_client_map[video_name].add(client_ip)
-            print(f"Added client {client_ip} to video {video_name}.")
+            #print(f"Added client {client_ip} to video {video_name}.")
 
             if len(self.video_client_map[video_name]) == 1:
                 # First client for this video, send START_STREAM command to the server

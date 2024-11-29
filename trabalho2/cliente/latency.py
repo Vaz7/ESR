@@ -63,12 +63,12 @@ class LatencyMonitor:
                 avg_latency = sum(times) / len(times)
                 with self.lock:
                     self.shared_dict[self.ip] = round(avg_latency, 3)
-                print(f"Average latency for {self.ip}: {self.shared_dict[self.ip]} ms")
+                #print(f"Average latency for {self.ip}: {self.shared_dict[self.ip]} ms")
             else:
                 print(f"No successful transmissions for {self.ip}. Setting latency to inf.")
                 with self.lock:
                     self.shared_dict[self.ip] = float("inf")
     
             # Wait 30 seconds before the next full measurement cycle
-            time.sleep(30)
+            time.sleep(10)
     

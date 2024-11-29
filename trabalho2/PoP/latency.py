@@ -3,7 +3,7 @@ import threading
 import socket
 
 class LatencyManager:
-    def __init__(self, timeout=20):
+    def __init__(self, timeout=15):
         self.lock = threading.Lock()  # Ensure thread-safe access
         self.server_latencies = {}  # Dictionary to store latencies for each server
         self.last_update_time = {}  # Dictionary to store the last update time for each server
@@ -16,7 +16,7 @@ class LatencyManager:
             self.server_latencies[server_ip] = latency
             self.last_update_time[server_ip] = time.time()  # Record current time for last update
             self.availableVideos = availableVideos
-            print(f"Updated latency for {server_ip}: {latency:.2f} ms")
+            #print(f"Updated latency for {server_ip}: {latency:.2f} ms")
 
     def delete_stale_servers(self):
         """Remove servers that haven't updated latency within the timeout period."""
@@ -65,7 +65,7 @@ class LatencyHandler:
 
         while True:
             client_socket, addr = server_socket.accept()
-            print(f"Connection established with {addr}")
+            #print(f"Connection established with {addr}")
             client_socket.settimeout(5)  # Set timeout for receiving data
 
             try:
