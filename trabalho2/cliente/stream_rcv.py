@@ -32,14 +32,16 @@ class StreamReceiver:
                 if self.target_ip and addr[0] != self.target_ip:
                     continue  # Ignore packets from other IPs
                 
-                packet_id, frame_size = struct.unpack('>HI', packet[:6])
-                
+                # Unpack the 16-byte video ID, 2-byte packet ID, and 4-byte frame size
+                video_id, packet_id, frame_size = struct.unpack('>16sHI', packet[:22])
+                video_id = video_id.decode().strip()  # Decode and strip padding
+
                 # Initialize frame buffer if this is a new frame
                 if expected_frame_size is None or frame_size != expected_frame_size:
                     expected_frame_size = frame_size
                     data = b""
 
-                data += packet[6:]
+                data += packet[22:]  # Append data excluding the header
                 
                 # If we've collected the whole frame, decode and display it
                 if len(data) >= expected_frame_size:
@@ -65,4 +67,3 @@ class StreamReceiver:
         self.running = False
         self.client_socket.close()
         cv2.destroyAllWindows()
-
